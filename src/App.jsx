@@ -6,7 +6,7 @@ import {
 import {
   Anchor, Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- theme */
@@ -124,27 +124,27 @@ const BARCLR = ["#c9a24b", "#4ba9a3", "#e7c877", "#6f9bd1", "#46b98a", "#b98acb"
    Per-service funnel economics reflect real channels: LinkedIn for global ship managers (higher CPM/CPC),
    Meta/Google for mass SA training (cheaper). Rates from 2025/26 B2B benchmarks. Prices = calibrate w/ AUK actuals. */
 const SEED = [
-  { id: 1, name: "Logistics", market: 4000, price: 40000, cost: 0.72, share: [0.015, 0.03, 0.05],
+  { id: 1, name: "Logistics", market: 4000, price: 40000, cost: 0.72, orders: [60, 120, 200],
     mkt: { audience: "Exporters, importers, freight forwarders & traders", channel: "LinkedIn", geo: "SA + cross-border",
       aw: 0.020, it: 0.05, cl: 0.12, cpm: 150, cpc: 15, touches: 4, cpt: 250,
-      segments: ["Container & Air \u00b7 Breakbulk \u00b7 Bulk (Export/Import)", "Modes: Road \u00b7 Rail \u00b7 Water \u00b7 Air", "Transportation \u00b7 Warehousing \u00b7 Value-added"] } },
-  { id: 2, name: "Ship inspection services", market: 4000, price: 55000, cost: 0.45, share: [0.02, 0.04, 0.06],
+      segments: ["Container & Air · Breakbulk · Bulk (Export/Import)", "Modes: Road · Rail · Water · Air", "Transportation · Warehousing · Value-added"] } },
+  { id: 2, name: "Ship inspection services", market: 4000, price: 55000, cost: 0.45, orders: [80, 160, 240],
     mkt: { audience: "Ship managers & technical superintendents", channel: "LinkedIn", geo: "Global",
       aw: 0.012, it: 0.08, cl: 0.12, cpm: 800, cpc: 40, touches: 4, cpt: 350,
       segments: ["Condition & pre-purchase surveys", "Bunker & draft surveys", "Class / flag-related", "P&I condition surveys"] } },
-  { id: 3, name: "Maritime consulting services", market: 250, price: 220000, cost: 0.40, share: [0.04, 0.07, 0.11],
+  { id: 3, name: "Maritime consulting services", market: 250, price: 220000, cost: 0.40, orders: [10, 18, 28],
     mkt: { audience: "Ship owners, operators & port authorities", channel: "LinkedIn", geo: "Regional / global",
       aw: 0.012, it: 0.07, cl: 0.15, cpm: 700, cpc: 40, touches: 5, cpt: 400,
       segments: ["Ports & shipping strategy", "Operations & efficiency", "Regulatory / compliance"] } },
-  { id: 4, name: "Business consulting (SA)", market: 600, price: 140000, cost: 0.42, share: [0.02, 0.04, 0.06],
+  { id: 4, name: "Business consulting (SA)", market: 600, price: 140000, cost: 0.42, orders: [12, 24, 36],
     mkt: { audience: "SA corporates & SMMEs (BEE)", channel: "LinkedIn", geo: "South Africa",
       aw: 0.020, it: 0.06, cl: 0.12, cpm: 250, cpc: 25, touches: 4, cpt: 300,
       segments: ["Strategy & growth", "BEE & transformation", "Industry-specific advisory"] } },
-  { id: 5, name: "Cargo inspection & loss adjusting", market: 3500, price: 48000, cost: 0.48, share: [0.03, 0.05, 0.08],
+  { id: 5, name: "Cargo inspection & loss adjusting", market: 3500, price: 48000, cost: 0.48, orders: [105, 175, 280],
     mkt: { audience: "Insurers, cargo owners, traders & P&I clubs", channel: "LinkedIn", geo: "SA + regional",
       aw: 0.018, it: 0.06, cl: 0.14, cpm: 400, cpc: 30, touches: 3, cpt: 300,
       segments: ["Draft & quantity surveys", "Sampling & quality", "Loss & claims adjustment"] } },
-  { id: 6, name: "Training & skills development", market: 2500, price: 14000, cost: 0.38, share: [0.04, 0.07, 0.10],
+  { id: 6, name: "Training & skills development", market: 2500, price: 14000, cost: 0.38, orders: [100, 175, 250],
     mkt: { audience: "Seafarers, SMMEs, entrepreneurs & employers", channel: "Meta", geo: "South Africa",
       aw: 0.025, it: 0.05, cl: 0.15, cpm: 90, cpc: 8, touches: 2, cpt: 150,
       segments: ["IMO / DoT courses", "Skills programmes", "Corporate & in-house training"] } },
@@ -174,7 +174,7 @@ const PORTFOLIO = {
       { title: "Information & AI", items: [
         { name: "Social Media Marketing & AI", code: "B02", seg: "SMMEs", out: "Sell your product / solutions" },
       ] },
-      { title: "Maritime \u00b7 seafarer to shore inspector", items: [
+      { title: "Maritime · seafarer to shore inspector", items: [
         { name: "Internal Audit on a Ship", code: "SPM015", seg: "Seafarers", out: "Shore job as ship inspector" },
         { name: "PSC Preparation", code: "SPM017", seg: "Seafarers", out: "Shore job as ship inspector" },
         { name: "RightShip Inspection Readiness", code: "SPM016", seg: "Seafarers", out: "Shore job as ship inspector" },
@@ -192,18 +192,18 @@ const PORTFOLIO = {
     note: CLIENT_EXPECT,
     groups: [
       { title: "Maritime, port & shipping", items: [
-        { name: "Non-financial risk assessment \u2014 Shipping, Port & Maritime", seg: "Shipping & maritime \u00b7 Port", flag: "Tech-3CS" },
-        { name: "Port optimisation & cargo projections", seg: "Port", flag: "Tech-3CS" },
-        { name: "Shipping & maritime advisory", seg: "Shipping & maritime", flag: "Tech-3CS" },
-        { name: "Funding model & tariff setting for state-owned entities", seg: "Maritime \u00b7 Government" },
-        { name: "Supply chain & transport corridor optimisation", seg: "Manufacturing \u00b7 Government", flag: "Tech-3CS" },
+        { name: "Non-financial risk assessment — Shipping, Port & Maritime", seg: "Shipping & maritime · Port" },
+        { name: "Port optimisation & cargo projections", seg: "Port" },
+        { name: "Shipping & maritime advisory", seg: "Shipping & maritime" },
+        { name: "Funding model & tariff setting for state-owned entities", seg: "Maritime · Government" },
+        { name: "Supply chain & transport corridor optimisation", seg: "Manufacturing · Government" },
       ] },
       { title: "Feasibility & project development", items: [
-        { name: "Conduct of feasibility studies", seg: "Metallurgy \u00b7 Shipping \u00b7 Port \u00b7 Mining \u00b7 Logistics \u00b7 SMME" },
-        { name: "Project case to project development studies", seg: "Metallurgy \u00b7 Shipping \u00b7 Port \u00b7 Mining \u00b7 Logistics \u00b7 SMME" },
+        { name: "Conduct of feasibility studies", seg: "Metallurgy · Shipping · Port · Mining · Logistics · SMME" },
+        { name: "Project case to project development studies", seg: "Metallurgy · Shipping · Port · Mining · Logistics · SMME" },
       ] },
       { title: "Market & access", items: [
-        { name: "Market access research", seg: "Mining \u00b7 Automotive \u00b7 SMME" },
+        { name: "Market access research", seg: "Mining · Automotive · SMME" },
       ] },
     ],
   },
@@ -211,17 +211,17 @@ const PORTFOLIO = {
     note: CLIENT_EXPECT,
     groups: [
       { title: "Strategy & growth (any industry)", items: [
-        { name: "Business diagnostics & improvement", seg: "Any industry", flag: "Tech-3CS" },
-        { name: "Business plans & models development", seg: "Any industry", flag: "Tech-3CS" },
-        { name: "Growth strategy development & implementation", seg: "Any industry", flag: "Tech-3CS" },
+        { name: "Business diagnostics & improvement", seg: "Any industry" },
+        { name: "Business plans & models development", seg: "Any industry" },
+        { name: "Growth strategy development & implementation", seg: "Any industry" },
       ] },
       { title: "Marketing & digital", items: [
         { name: "Marketing strategy development & implementation", seg: "Any industry" },
         { name: "Social media strategy development & implementation", seg: "Any industry" },
       ] },
       { title: "Skills & technology", items: [
-        { name: "Skill development strategy", seg: "Education \u00b7 Any industry" },
-        { name: "Automation, AI & ML", seg: "Any industry", flag: "3CS Group" },
+        { name: "Skill development strategy", seg: "Education · Any industry" },
+        { name: "Automation, AI & ML", seg: "Any industry" },
       ] },
     ],
   },
@@ -240,33 +240,26 @@ const PORTFOLIO = {
     groups: [ { title: "Services", items: [
       { name: "Draft & quantity surveys", seg: "Traders & owners" },
       { name: "Sampling & quality inspection", seg: "Cargo owners" },
-      { name: "Loss & claims adjustment", seg: "Insurers \u00b7 P&I" },
+      { name: "Loss & claims adjustment", seg: "Insurers · P&I" },
       { name: "Marine casualty & damage survey", seg: "Insurers" },
     ] } ],
   },
   "Logistics": {
-    note: "Delivered through the AUK agent & provider network (Imperial, CWT, transporters, stevedores) \u2014 a referral-led channel rather than paid ads.",
+    note: "Delivered through the AUK agent & provider network (Imperial, CWT, transporters, stevedores) — a referral-led channel rather than paid ads.",
     segsCust: ["Exporters", "Importers", "Freight forwarders", "Traders"],
     segsCargo: ["Container & Air", "Breakbulk", "Bulk (Export/Import)"],
     landingPrice: true,
     groups: [
       { title: "Transportation", items: [
-        { name: "Trucking, fleet mgmt, route planning", seg: "Road" },
-        { name: "Railway cargo transport", seg: "Rail" },
-        { name: "Shipping ops, port dev, dredging, pilotage, towage, stevedoring, ship repair", seg: "Water" },
-        { name: "Air cargo ops & cargo aircraft", seg: "Air" },
+        { name: "Trucking", seg: "Road" },
+        { name: "Rail", seg: "Rail" },
+        { name: "Air", seg: "Air" },
+        { name: "Courier", seg: "Express" },
       ] },
       { title: "Warehousing", items: [
-        { name: "Inland distribution, LTL transhipment", seg: "Road" },
-        { name: "ICD/CFS multimodal warehouses", seg: "Rail" },
-        { name: "Port-based warehousing, tank farms", seg: "Water" },
-        { name: "Air cargo transhipment warehouse", seg: "Air" },
-      ] },
-      { title: "Value-added services", items: [
-        { name: "Express, cold chain, track & trace, packaging", seg: "Road" },
-        { name: "Dedicated rail container, stuffing/de-stuffing, consolidation", seg: "Rail" },
-        { name: "Freight forwarding, consolidation, NVOCC, customs clearance", seg: "Water" },
-        { name: "Express & courier, freight forwarding, customs clearance", seg: "Air" },
+        { name: "Stuffing", seg: "Container" },
+        { name: "Storage", seg: "Warehouse" },
+        { name: "Handling", seg: "Warehouse" },
       ] },
     ],
   },
@@ -284,12 +277,13 @@ export default function App() {
 
   const calc = useMemo(() => {
     const rows = svcs.map((s) => {
-      const yrs = s.share.map((sh) => {
-        const customers = s.market * sh;
+      const yrs = s.orders.map((ord) => {
+        const customers = ord;
+        const sh = s.market ? ord / s.market : 0;
         const turnover = customers * s.price;
         const cost = turnover * s.cost;
         const gp = turnover - cost;
-        return { sh, customers, turnover, cost, gp, margin: turnover ? gp / turnover : 0 };
+        return { sh, orders: ord, customers, turnover, cost, gp, margin: turnover ? gp / turnover : 0 };
       });
       return { ...s, yrs };
     });
@@ -341,6 +335,7 @@ export default function App() {
     ["funnel", "Funnel Plan", Filter],
     ["res", "Resources & Budget", Users],
     ["camp", "Campaign & AI", Sparkles],
+    ["play", "Playbook", Map],
     ["crm", "Feedback & CRM", Radar],
   ];
 
@@ -371,11 +366,12 @@ export default function App() {
       <div className="wrap">
         {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
         {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} />}
-        {tab === "portfolio" && <Portfolio svcs={svcs} />}
+        {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} />}
         {tab === "rev" && <Revenue calc={calc} />}
         {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
         {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} />}
         {tab === "camp" && <Campaign svcs={svcs} />}
+        {tab === "play" && <Playbook />}
         {tab === "crm" && <CRM />}
       </div>
     </div>
@@ -476,7 +472,7 @@ function Inputs({ svcs, setSvcs }) {
     setSvcs((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
-        if (key === "share") { const sh = [...s.share]; sh[idx] = val; return { ...s, share: sh }; }
+        if (key === "orders") { const o = [...s.orders]; o[idx] = val; return { ...s, orders: o }; }
         return { ...s, [key]: val };
       })
     );
@@ -491,7 +487,7 @@ function Inputs({ svcs, setSvcs }) {
       </div>
 
       <div className="note" style={{ marginBottom: 16 }}>
-        <b>How each line works:</b> Addressable market = how many jobs / clients / seats exist per year. Target share = the slice you aim to win each year. Customers won × avg price = turnover. Delivery cost % is what it costs you to deliver, so margin = 1 − cost.
+        <b>How each line works:</b> you set the <b style={{ color: "var(--brass)" }}>order targets</b> — the number of orders/jobs/seats to win each year. Market share is then <b>calculated automatically</b> (orders ÷ addressable market). Those orders are what the campaigns and promotions must deliver — see the Funnel Plan. Orders × avg price = turnover; delivery cost % sets the margin. Order targets can also be set per service on the Portfolio tab.
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
@@ -502,6 +498,7 @@ function Inputs({ svcs, setSvcs }) {
               <th>Addressable market /yr</th>
               <th>Avg price (R)</th>
               <th>Delivery cost %</th>
+              <th>Orders Y1</th><th>Orders Y2</th><th>Orders Y3</th>
               <th>Share Y1</th><th>Share Y2</th><th>Share Y3</th>
             </tr>
           </thead>
@@ -512,25 +509,35 @@ function Inputs({ svcs, setSvcs }) {
                 <td><input className="cellinp" value={s.market} onChange={(e) => upd(s.id, "market", num(e.target.value))} /></td>
                 <td><input className="cellinp" value={s.price} onChange={(e) => upd(s.id, "price", num(e.target.value))} /></td>
                 <td><input className="cellinp" style={{ width: 66 }} value={(s.cost * 100).toFixed(0)} onChange={(e) => upd(s.id, "cost", num(e.target.value) / 100)} /></td>
-                {s.share.map((sh, i) => (
-                  <td key={i}><input className="cellinp" style={{ width: 62 }} value={(sh * 100).toFixed(1)} onChange={(e) => upd(s.id, "share", num(e.target.value) / 100, i)} /></td>
+                {s.orders.map((o, i) => (
+                  <td key={"o" + i}><input className="cellinp" style={{ width: 62 }} value={o} onChange={(e) => upd(s.id, "orders", num(e.target.value), i)} /></td>
+                ))}
+                {s.orders.map((o, i) => (
+                  <td key={"s" + i} className="mono" style={{ color: "var(--teal)" }}>{s.market ? ((o / s.market) * 100).toFixed(1) + "%" : "—"}</td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="hint" style={{ marginTop: 12 }}>Share values are percentages (type <span className="mono">5</span> for 5%). Everything auto-saves in the session.</div>
+        <div className="hint" style={{ marginTop: 12 }}>Type order targets — the <b style={{ color: "var(--teal)" }}>teal share %</b> columns compute themselves (orders ÷ market). Everything recalculates instantly.</div>
       </div>
     </>
   );
 }
 
 /* ---------------------------------------------------------------- portfolio */
-function Portfolio({ svcs }) {
+function Portfolio({ svcs, setSvcs }) {
   const [sel, setSel] = useState(svcs[0]?.name || "");
   const s = svcs.find((x) => x.name === sel) || svcs[0];
   const p = PORTFOLIO[s?.name];
   const isConsult = p?.note === CLIENT_EXPECT;
+  const setOrder = (idx, val) => {
+    const n = isNaN(parseFloat(val)) ? 0 : parseFloat(val);
+    setSvcs((prev) => prev.map((x) => {
+      if (x.id !== s.id) return x;
+      const o = [...x.orders]; o[idx] = n; return { ...x, orders: o };
+    }));
+  };
   const [lp, setLp] = useState({ invoice: 612066, duties: 0, freight: 29000, markup: 15 });
   const setL = (k, v) => setLp((o) => ({ ...o, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const landing = (lp.invoice + lp.duties + lp.freight) * (1 + lp.markup / 100);
@@ -554,6 +561,25 @@ function Portfolio({ svcs }) {
             {isConsult ? <><b>Client expectations.</b> {p.note.replace("What clients expect: ", "")}</> : p.note}
           </div>
 
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="eyebrow" style={{ marginBottom: 12 }}>Order targets · what marketing must deliver</div>
+            <div className="grid g4">
+              {YEARS.map((y, i) => (
+                <div className="field" key={y}>
+                  <label>Orders {y}</label>
+                  <input className="inp num" value={s.orders[i]} onChange={(e) => setOrder(i, e.target.value)} />
+                  <span className="hint" style={{ fontSize: 11 }}>= {s.market ? ((s.orders[i] / s.market) * 100).toFixed(1) : "0"}% market share</span>
+                </div>
+              ))}
+              <div className="field">
+                <label>Addressable market /yr</label>
+                <div className="mono" style={{ padding: "9px 0", fontSize: 18 }}>{s.market.toLocaleString()}</div>
+                <span className="hint" style={{ fontSize: 11 }}>Edit on the Inputs tab</span>
+              </div>
+            </div>
+            <div className="hint" style={{ marginTop: 10 }}>These orders flow straight into Inputs &amp; Assumptions (share auto-computed), Revenue &amp; Margins, and the Funnel Plan — which converts them into the campaign activity and budget required.</div>
+          </div>
+
           {p.segsCust && (
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>Freight-forwarding segments</div>
@@ -574,17 +600,16 @@ function Portfolio({ svcs }) {
                   <thead>
                     <tr>
                       <th>Offering</th>{g.items[0]?.code !== undefined && <th>Code</th>}
-                      <th>Segment</th>{g.items[0]?.out !== undefined && <th>Outcome</th>}{g.items.some((i) => i.flag) && <th>Partner</th>}
+                      <th>Segment</th>{g.items[0]?.out !== undefined && <th>Outcome</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {g.items.map((it, i) => (
                       <tr key={i}>
                         <td className="svc" style={{ whiteSpace: "normal" }}>{it.name}</td>
-                        {g.items[0]?.code !== undefined && <td style={{ textAlign: "left" }}><span className="tag">{it.code || "\u2014"}</span></td>}
+                        {g.items[0]?.code !== undefined && <td style={{ textAlign: "left" }}><span className="tag">{it.code || "—"}</span></td>}
                         <td style={{ textAlign: "left", color: "var(--slate)" }}>{it.seg}</td>
                         {g.items[0]?.out !== undefined && <td style={{ textAlign: "left", color: "var(--teal)" }}>{it.out}</td>}
-                        {g.items.some((x) => x.flag) && <td style={{ textAlign: "left" }}>{it.flag ? <span className="pill" style={{ background: "rgba(201,162,75,.15)", color: "var(--brass)" }}>{it.flag}</span> : ""}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -865,7 +890,15 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
 /* ---------------------------------------------------------------- resources */
 function Resources({ budget, setBudget, calc, mktCost, fc }) {
   const set = (k, v) => setBudget((b) => ({ ...b, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
+  const [cap, setCap] = useState({ hoursPerMonth: 140, touchesPerHour: 2, contentHrsMonth: 40 });
+  const setC = (k, v) => setCap((c) => ({ ...c, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const y1 = calc.totals[0], y3 = calc.totals[2];
+  // Capacity: total sales touches the Y1 funnel demands vs hours the team has
+  const touchesY1 = fc.rows.reduce((a, r) => a + r.fyrs[0].leads * (r.mkt?.touches || 0), 0);
+  const reqHours = (cap.touchesPerHour ? touchesY1 / cap.touchesPerHour : 0) + cap.contentHrsMonth * 12;
+  const heads = budget.salesMgr + budget.campMgr;
+  const availHours = heads * cap.hoursPerMonth * 12;
+  const util = availHours ? reqHours / availHours : 0;
   const cac = y1.cust ? mktCost / y1.cust : 0;
   const spendRatio = y1.turnover ? mktCost / y1.turnover : 0;
 
@@ -903,6 +936,26 @@ function Resources({ budget, setBudget, calc, mktCost, fc }) {
             <Kpi label="Spend as % of Y1 turnover" val={pct(spendRatio)} foot="Keep an eye on this" fill={spendRatio * 4} accent={spendRatio > 0.3 ? "var(--amber)" : "var(--green)"} />
             <Kpi label="Cost to acquire a customer" val={Rk(cac)} foot="Year 1 marketing ÷ customers" fill={0.5} />
             <Kpi label="ROI by Year 3" val={(mktCost ? (y3.gp - mktCost) / mktCost : 0).toFixed(1) + "x"} foot="Gross profit vs spend" fill={0.7} accent="var(--green)" />
+          </div>
+        </div>
+      </div>
+
+      <div className="divh"><h3>Capacity check · can the team execute Year 1?</h3><div className="ln" /></div>
+      <div className="grid g2">
+        <div className="card">
+          <div className="eyebrow" style={{ marginBottom: 14 }}>Working assumptions</div>
+          <div className="grid g3">
+            <div className="field"><label>Productive hours / head / month</label><input className="inp num" value={cap.hoursPerMonth} onChange={(e) => setC("hoursPerMonth", e.target.value)} /></div>
+            <div className="field"><label>Sales touches per hour</label><input className="inp num" value={cap.touchesPerHour} onChange={(e) => setC("touchesPerHour", e.target.value)} /><span className="hint" style={{ fontSize: 10.5 }}>Blend: ~7 calls or 3 emails/hr, meetings longer</span></div>
+            <div className="field"><label>Content & prep hours / month</label><input className="inp num" value={cap.contentHrsMonth} onChange={(e) => setC("contentHrsMonth", e.target.value)} /><span className="hint" style={{ fontSize: 10.5 }}>Posts, SEO, ads, events prep</span></div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="eyebrow" style={{ marginBottom: 14 }}>The verdict</div>
+          <div className="grid g3">
+            <Kpi label="Touches the funnel demands" val={Math.round(touchesY1).toLocaleString()} foot="Leads × touches per lead, Y1" fill={0.6} />
+            <Kpi label="Hours required" val={Math.round(reqHours).toLocaleString()} foot={`vs ${Math.round(availHours).toLocaleString()} available (${heads} heads)`} fill={Math.min(util, 1)} />
+            <Kpi label="Team utilisation" val={pct(util)} foot={util > 1 ? "Over capacity — add heads or ease targets" : util > 0.85 ? "Tight but feasible" : "Comfortable"} fill={Math.min(util, 1)} accent={util > 1 ? "var(--red)" : util > 0.85 ? "var(--amber)" : "var(--green)"} />
           </div>
         </div>
       </div>
@@ -1043,23 +1096,80 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
   );
 }
 
+
+/* ---------------------------------------------------------------- playbook */
+const PLAYBOOK = [
+  { step: 0, what: "Transaction-ready website", media: "Website is the landing point for every campaign", prospect: "Finds a credible home for the brand", sales: "Foundation — everything below points here" },
+  { step: 1, what: "Choose social media channels", media: "Match channel to audience (LinkedIn = professionals, Meta = consumers/SMMEs)", prospect: "—", sales: "Compile a target list from directories" },
+  { step: 2, what: "SEO + link website to analytics", media: "Optimise pages + regular blog and posts with content", prospect: "Prospective client discovers the brand", sales: "Keep building the directory list" },
+  { step: 3, what: "Register Google Ads (Search / Display)", media: "Google serves the ad to prospects searching, on a PPC basis", prospect: "Person searches for the need and sees the ad", sales: "Send emails with catalogues" },
+  { step: 4, what: "Pop-up subscription form / free trial / web conference invite", media: "Ad shown — person may engage and reach the website in seconds", prospect: "Sees ad, may sign up on the pop-up form", sales: "Ask for a meeting on the web first" },
+  { step: 5, what: "Daily presence on Facebook + LinkedIn", media: "Content stays available for reading + download; host an online conference and invite them", prospect: "Sees the content again + registers", sales: "Persuasive communication — master the message" },
+  { step: 6, what: "Campaign 2: sales call — phone + email to subscribers + directory list", media: "A prepared call + email directs them to a meeting", prospect: "Asked for a meeting on the web first", sales: "Negotiation" },
+  { step: 7, what: "Search + connect on LinkedIn", media: "Send a connection request", prospect: "Accepts — asked for a meeting", sales: "Sale" },
+  { step: 8, what: "CRM with established clients", media: "CRM strategy runs", prospect: "Stays engaged, gives feedback", sales: "CRM & feedback — repeat business + referrals" },
+];
+const AIDA_OF_STEP = ["Foundation", "Awareness", "Awareness", "Awareness", "Interest", "Interest", "Decision", "Decision", "Retention"];
+const STAGE_CLR = { Foundation: "var(--slate)", Awareness: "var(--slate)", Interest: "var(--teal)", Decision: "var(--brass)", Retention: "var(--green)" };
+
+function Playbook() {
+  return (
+    <>
+      <div className="sechead">
+        <div><div className="eyebrow">Use all touchpoints</div><h2>Campaign playbook</h2></div>
+        <div className="sub">The step-by-step journey a prospect travels — what you do, what the channel does, what the prospect does, and the sales move at each step.</div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {PLAYBOOK.map((s, i) => (
+          <div className="card" key={s.step} style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <div className="disp mono" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--brass)", color: "var(--brass)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700 }}>{s.step}</div>
+              {i < PLAYBOOK.length - 1 && <div style={{ width: 1, flex: 1, background: "var(--line)" }} />}
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                <div className="disp" style={{ fontSize: 18, fontWeight: 600 }}>{s.what}</div>
+                <span className="pill" style={{ background: "var(--navy-700)", color: STAGE_CLR[AIDA_OF_STEP[i]] }}>{AIDA_OF_STEP[i]}</span>
+              </div>
+              <div className="grid g3">
+                <div><div className="eyebrow" style={{ fontSize: 10.5, marginBottom: 4 }}>Action by the channel</div><div style={{ fontSize: 13, color: "var(--slate)" }}>{s.media}</div></div>
+                <div><div className="eyebrow" style={{ fontSize: 10.5, marginBottom: 4, color: "var(--teal)" }}>Action of the prospect</div><div style={{ fontSize: 13, color: "var(--slate)" }}>{s.prospect}</div></div>
+                <div><div className="eyebrow" style={{ fontSize: 10.5, marginBottom: 4, color: "var(--green)" }}>Sales strategy</div><div style={{ fontSize: 13, color: "var(--slate)" }}>{s.sales}</div></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="note" style={{ marginTop: 16 }}>
+        <b>Message framework:</b> decide <i>what to say</i> (rational · emotional · moral), <i>how to say it</i> (a clear argument for why they must choose you, attention-catching words and graphics), and carry it through personal and non-personal channels alike — sales conversations, word of mouth and collected opinions included.
+      </div>
+    </>
+  );
+}
+
 /* ---------------------------------------------------------------- CRM + feedback */
 const STAGES = ["Lead", "Contacted", "Meeting", "Proposal", "Won"];
 const STAGECLR = { Lead: "var(--slate)", Contacted: "var(--teal)", Meeting: "var(--brass)", Proposal: "var(--amber)", Won: "var(--green)" };
 
 function CRM() {
   const [fb, setFb] = useState({ views: 42000, likes: 1850, clicks: 640, leads: 95 });
-  const [rows, setRows] = useState([
-    { id: 1, name: "Nomsa Dlamini", co: "Durban Bulk Terminals", svc: "Cargo inspection & loss adjusting", stage: "Meeting", val: 220000 },
-    { id: 2, name: "Pieter van Wyk", co: "Coastal Freight SA", svc: "Logistics", stage: "Proposal", val: 540000 },
-    { id: 3, name: "Ravi Naidoo", co: "Cape Port Authority", svc: "Maritime consulting services", stage: "Lead", val: 360000 },
-  ]);
+  // 5 blank contact slots per service — fill with your real pipeline
+  const [rows, setRows] = useState(() =>
+    SEED.flatMap((s, si) =>
+      Array.from({ length: 5 }, (_, i) => ({
+        id: si * 10 + i + 1, name: "", co: "", svc: s.name, stage: "Lead", val: 0,
+      }))
+    )
+  );
+  const [svcFilter, setSvcFilter] = useState("All services");
   const setF = (k, v) => setFb((f) => ({ ...f, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const engage = fb.views ? fb.likes / fb.views : 0;
   const ctr = fb.views ? fb.clicks / fb.views : 0;
   const conv = fb.clicks ? fb.leads / fb.clicks : 0;
 
-  const addRow = () => setRows((r) => [...r, { id: Date.now(), name: "New contact", co: "", svc: "Logistics", stage: "Lead", val: 0 }]);
+  const addRow = () => setRows((r) => [...r, { id: Date.now(), name: "", co: "", svc: "Logistics", stage: "Lead", val: 0 }]);
   const upd = (id, k, v) => setRows((r) => r.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
   const del = (id) => setRows((r) => r.filter((x) => x.id !== id));
   const openPipe = rows.filter((r) => r.stage !== "Won").reduce((a, r) => a + (+r.val || 0), 0);
@@ -1089,17 +1199,22 @@ function CRM() {
         <Kpi label="Lead conversion" val={pct(conv)} foot="Leads ÷ clicks" fill={conv * 4} accent="var(--green)" />
       </div>
 
-      <div className="divh"><h3>Pipeline</h3><div className="ln" /><span className="tag">Open {Rk(openPipe)} · Won {Rk(won)}</span></div>
+<div className="divh"><h3>Pipeline</h3><div className="ln" /><span className="tag">Open {Rk(openPipe)} · Won {Rk(won)}</span></div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        {["All services", ...SEED.map((s) => s.name)].map((n) => (
+          <button key={n} className={"navb" + (svcFilter === n ? " on" : "")} onClick={() => setSvcFilter(n)} style={{ fontSize: 12.5, padding: "7px 11px" }}>{n}</button>
+        ))}
+      </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead>
             <tr><th>Contact</th><th>Company</th><th>Service interest</th><th>Stage</th><th>Deal value (R)</th><th></th></tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.filter((r) => svcFilter === "All services" || r.svc === svcFilter).map((r) => (
               <tr key={r.id}>
-                <td><input className="cellinp" style={{ width: 150, textAlign: "left" }} value={r.name} onChange={(e) => upd(r.id, "name", e.target.value)} /></td>
-                <td><input className="cellinp" style={{ width: 170, textAlign: "left" }} value={r.co} onChange={(e) => upd(r.id, "co", e.target.value)} /></td>
+                <td><input className="cellinp" style={{ width: 150, textAlign: "left" }} placeholder="Contact name" value={r.name} onChange={(e) => upd(r.id, "name", e.target.value)} /></td>
+                <td><input className="cellinp" style={{ width: 170, textAlign: "left" }} placeholder="Company" value={r.co} onChange={(e) => upd(r.id, "co", e.target.value)} /></td>
                 <td style={{ textAlign: "left" }}>
                   <select className="sel" style={{ padding: "5px 8px", fontSize: 13 }} value={r.svc} onChange={(e) => upd(r.id, "svc", e.target.value)}>
                     {SEED.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
