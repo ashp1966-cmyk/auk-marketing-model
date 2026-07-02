@@ -6,7 +6,7 @@ import {
 import {
   Anchor, Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- theme */
@@ -412,6 +412,9 @@ export default function App() {
         <div className="pill" style={{ background: "var(--navy-700)", color: "var(--slate)" }}>
           <Compass size={14} /> v1 · ZAR · 3-year plan
         </div>
+        <button className="btn ghost sm" onClick={() => setAuthed(false)} title="Sign out">
+          <LogOut size={15} /> Sign out
+        </button>
       </div>
       <div className="plimsoll" />
 
