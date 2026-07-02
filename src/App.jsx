@@ -97,6 +97,14 @@ const CSS = `
 .divh h3{font-size:20px;text-transform:uppercase;font-weight:700;}
 .divh .ln{flex:1;height:1px;background:var(--line);}
 
+/* login */
+.loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% -20%,#123049 0%,#071523 60%);}
+.loginbox{width:100%;max-width:400px;background:var(--navy-800);border:1px solid var(--line);border-radius:16px;padding:34px 30px;}
+.loginbox .mark{width:52px;height:52px;margin:0 auto 14px;}
+.loginT{text-align:center;font-size:26px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+.loginS{text-align:center;color:var(--slate);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;margin-bottom:24px;}
+.loginerr{color:var(--red);font-size:13px;text-align:center;margin-top:12px;}
+
 /* AI post card */
 .postbox{background:var(--navy-850);border:1px solid var(--line);border-radius:12px;padding:16px 18px;white-space:pre-wrap;font-size:14px;line-height:1.6;}
 .metarow{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;}
@@ -265,8 +273,58 @@ const PORTFOLIO = {
   },
 };
 
+/* ---------------------------------------------------------------- login gate */
+function Login({ onOk }) {
+  const [u, setU] = useState("");
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!u || !pw) { setErr("Enter username and password"); return; }
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: u, password: pw }),
+      });
+      if (res.ok) { onOk(); }
+      else { setErr("Invalid username or password"); }
+    } catch (e) {
+      setErr("Could not reach the login service");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="aukm">
+      <style>{CSS}</style>
+      <div className="loginwrap">
+        <div className="loginbox">
+          <div className="mark"><Anchor size={26} /></div>
+          <div className="loginT">AUK Marine <span style={{ color: "var(--brass)" }}>&amp; Mining</span></div>
+          <div className="loginS">Linked Marketing Model · Restricted access</div>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label>Username</label>
+            <input className="inp" value={u} onChange={(e) => setU(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} autoFocus />
+          </div>
+          <div className="field" style={{ marginBottom: 18 }}>
+            <label>Password</label>
+            <input className="inp" type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+          </div>
+          <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={submit} disabled={busy}>
+            {busy ? "Checking…" : "Sign in"}
+          </button>
+          {err && <div className="loginerr">{err}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------- app */
 export default function App() {
+  const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState("dash");
   const [svcs, setSvcs] = useState(SEED);
   const [budget, setBudget] = useState({
@@ -338,6 +396,8 @@ export default function App() {
     ["play", "Playbook", Map],
     ["crm", "Feedback & CRM", Radar],
   ];
+
+  if (!authed) return <Login onOk={() => setAuthed(true)} />;
 
   return (
     <div className="aukm">
