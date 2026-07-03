@@ -6,7 +6,7 @@ import {
 import {
   Anchor, Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- theme */
@@ -158,6 +158,29 @@ const SEED = [
       segments: ["IMO / DoT courses", "Skills programmes", "Corporate & in-house training"] } },
 ];
 const CHANNELS = ["LinkedIn", "Meta", "Google", "Email", "Referral"];
+
+/* MIS constants — from AUK's own MIS (average gross profit per unit per service) */
+const MIS_MONTHS = ["Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun"];
+const GP_PER_UNIT = { 1:10000, 2:20000, 3:25000, 4:25000, 5:20000, 6:12000 };
+
+/* Prospective customers from AUK MIS — pre-loaded as pipeline anchors */
+const PROSPECTS = [
+  { co:"Transnet",          svc:"Training & skills development",          stage:"Lead", val:36000 },
+  { co:"DTI",               svc:"Training & skills development",          stage:"Lead", val:36000 },
+  { co:"Hanseatic/FMC",     svc:"Ship inspection services",               stage:"Contacted", val:360000 },
+  { co:"Safe Lane",         svc:"Ship inspection services",               stage:"Lead", val:110000 },
+  { co:"Shipping companies",svc:"Logistics",                              stage:"Contacted", val:480000 },
+  { co:"Songatech",         svc:"Logistics",                              stage:"Lead", val:40000 },
+  { co:"AMSOL",             svc:"Training & skills development",          stage:"Lead", val:72000 },
+  { co:"DoT",               svc:"Maritime consulting services",           stage:"Lead", val:140000 },
+  { co:"Amava",             svc:"Logistics",                              stage:"Contacted", val:120000 },
+  { co:"Mining Company 1",  svc:"Cargo inspection & loss adjusting",      stage:"Lead", val:288000 },
+  { co:"Mining Company 2",  svc:"Cargo inspection & loss adjusting",      stage:"Lead", val:288000 },
+  { co:"Mining Company 3",  svc:"Business consulting (SA)",               stage:"Lead", val:420000 },
+  { co:"HYA Matla",         svc:"Business consulting (SA)",               stage:"Lead", val:280000 },
+  { co:"Asal Freight",      svc:"Logistics",                              stage:"Lead", val:120000 },
+  { co:"Government Agency", svc:"Maritime consulting services",           stage:"Lead", val:140000 },
+];
 
 const CLIENT_EXPECT = "What clients expect: expert, tailored advice & strategy; quality delivered on time, on budget and to scope; clear communication on progress; problems solved as they arise; immersive AI/ML-enabled experiences; personalisation; and strong data protection & ethics.";
 
@@ -332,6 +355,11 @@ export default function App() {
     campMgr: 2, campMgrPay: 540000,
     socialAds: 1300000, otherPromo: 900000,
   });
+  // MIS actuals state: svcId -> 12 monthly actual unit values
+  const [actuals, setActuals] = useState(() =>
+    Object.fromEntries(SEED.map((s) => [s.id, Array(12).fill(0)]))
+  );
+  const [misIndirect, setMisIndirect] = useState({ hr: 24000, other: 62500 });
 
   const calc = useMemo(() => {
     const rows = svcs.map((s) => {
@@ -395,6 +423,7 @@ export default function App() {
     ["camp", "Campaign & AI", Sparkles],
     ["play", "Playbook", Map],
     ["crm", "Feedback & CRM", Radar],
+    ["mis", "MIS · Activity", BarChart2],
   ];
 
   if (!authed) return <Login onOk={() => setAuthed(true)} />;
@@ -436,6 +465,7 @@ export default function App() {
         {tab === "camp" && <Campaign svcs={svcs} />}
         {tab === "play" && <Playbook />}
         {tab === "crm" && <CRM />}
+        {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} />}
       </div>
     </div>
   );
@@ -1208,6 +1238,263 @@ function Playbook() {
       <div className="note" style={{ marginTop: 16 }}>
         <b>Message framework:</b> decide <i>what to say</i> (rational · emotional · moral), <i>how to say it</i> (a clear argument for why they must choose you, attention-catching words and graphics), and carry it through personal and non-personal channels alike — sales conversations, word of mouth and collected opinions included.
       </div>
+    </>
+  );
+}
+
+
+/* ---------------------------------------------------------------- MIS · Activity tracker */
+function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
+  const [selSvc, setSelSvc] = useState(svcs[0]?.id);
+  const [view, setView] = useState("service"); // "service" | "pl" | "pipeline"
+  const s = svcs.find((x) => x.id === selSvc) || svcs[0];
+
+  const setAct = (svcId, mi, val) =>
+    setActuals((prev) => ({
+      ...prev,
+      [svcId]: prev[svcId].map((v, i) => (i === mi ? (parseFloat(val) || 0) : v)),
+    }));
+
+  const projPerMonth = (svc) => (svc.orders[0] || 0) / 12;
+  const gpu = (svcId) => GP_PER_UNIT[svcId] || 0;
+  const indirect = misIndirect.hr + misIndirect.other;
+
+  // Per-month aggregate data (all services)
+  const monthlyAgg = MIS_MONTHS.map((m, mi) => {
+    let projGP = 0, actGP = 0;
+    svcs.forEach((sv) => {
+      projGP += projPerMonth(sv) * gpu(sv.id);
+      actGP += (actuals[sv.id][mi] || 0) * gpu(sv.id);
+    });
+    return { month: m, projGP, actGP, projProfit: projGP - indirect, actProfit: actGP - indirect };
+  });
+
+  // YTD (months where actuals were entered)
+  const activeMonths = MIS_MONTHS.filter((_, mi) => svcs.some((sv) => (actuals[sv.id][mi] || 0) > 0)).length;
+  const ytdProjGP = monthlyAgg.slice(0, Math.max(activeMonths, 1)).reduce((a, m) => a + m.projGP, 0);
+  const ytdActGP  = monthlyAgg.slice(0, Math.max(activeMonths, 1)).reduce((a, m) => a + m.actGP, 0);
+  const ytdVar    = ytdActGP - ytdProjGP;
+
+  // Per-service for selected line
+  const svcRows = MIS_MONTHS.map((m, mi) => {
+    const proj = projPerMonth(s);
+    const act  = actuals[s.id][mi] || 0;
+    return { month: m, proj, act, projGP: proj * gpu(s.id), actGP: act * gpu(s.id), var: act - proj };
+  });
+
+  // CRM prospects
+  const [prospects, setProspects] = useState(() =>
+    PROSPECTS.map((p, i) => ({ ...p, id: i + 1, name: "" }))
+  );
+  const updP = (id, k, v) => setProspects((prev) => prev.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
+  const openVal = prospects.filter((p) => p.stage !== "Won").reduce((a, p) => a + (+p.val || 0), 0);
+  const wonVal  = prospects.filter((p) => p.stage === "Won").reduce((a, p) => a + (+p.val || 0), 0);
+
+  return (
+    <>
+      <div className="sechead">
+        <div><div className="eyebrow">Operations · 2026</div><h2>MIS · Activity tracker</h2></div>
+        <div className="sub">Projected units from the marketing model vs actuals you enter each month. The gap is what more marketing must close.</div>
+      </div>
+
+      <div className="note" style={{ marginBottom: 16 }}>
+        <b>How the link works:</b> the <b style={{ color: "var(--brass)" }}>Projected</b> column for each service = Year 1 order target from the marketing model ÷ 12. Enter actual units delivered each month. The model calculates GP (using AUK's own average GP per unit from the MIS), deducts indirect expenses, and shows operating profit projected vs actual — month by month and YTD.
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {[["service","By service"],["pl","P&L summary"],["pipeline","Prospect pipeline"]].map(([v,l]) => (
+          <button key={v} className={"navb" + (view === v ? " on" : "")} onClick={() => setView(v)} style={{ fontSize: 13, padding: "8px 12px" }}>{l}</button>
+        ))}
+      </div>
+
+      {/* ---- SERVICE VIEW ---- */}
+      {view === "service" && (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {svcs.map((x) => (
+              <button key={x.id} className={"navb" + (selSvc === x.id ? " on" : "")} onClick={() => setSelSvc(x.id)} style={{ fontSize: 12.5, padding: "7px 11px" }}>{x.name}</button>
+            ))}
+          </div>
+
+          <div className="grid g4" style={{ marginBottom: 16 }}>
+            <Kpi label="Monthly target" val={Math.round(projPerMonth(s)).toLocaleString() + " units"} foot={`${Rk(projPerMonth(s) * gpu(s.id))} GP / month`} fill={0.6} accent="var(--brass)" />
+            <Kpi label="Avg GP per unit" val={Rk(gpu(s.id))} foot="From AUK MIS data" fill={0.5} />
+            <Kpi label="YTD actual units" val={svcs.find(x=>x.id===selSvc) ? MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[selSvc][mi]||0),0).toFixed(1) : "0"} foot="Enter actuals below" fill={0.6} accent="var(--teal)" />
+            <Kpi label="YTD actual GP" val={Rk(MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[selSvc][mi]||0)*gpu(selSvc),0))} foot="vs target" fill={0.5} accent="var(--green)" />
+          </div>
+
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Projected units</th>
+                  <th>Actual units</th>
+                  <th>Variance</th>
+                  <th>Proj GP</th>
+                  <th>Actual GP</th>
+                  <th>GP variance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {svcRows.map((r, mi) => {
+                  const vPct = r.proj ? (r.var / r.proj) * 100 : 0;
+                  const clr = r.var >= 0 ? "var(--green)" : r.var > -r.proj * 0.3 ? "var(--amber)" : "var(--red)";
+                  return (
+                    <tr key={r.month}>
+                      <td className="svc">{r.month}</td>
+                      <td className="mono">{r.proj.toFixed(1)}</td>
+                      <td>
+                        <input className="cellinp" style={{ width: 70 }}
+                          value={actuals[s.id][mi] || ""}
+                          placeholder="0"
+                          onChange={(e) => setAct(s.id, mi, e.target.value)} />
+                      </td>
+                      <td className="mono" style={{ color: clr }}>{r.var > 0 ? "+" : ""}{r.var.toFixed(1)} ({vPct > 0 ? "+" : ""}{vPct.toFixed(0)}%)</td>
+                      <td className="mono" style={{ color: "var(--slate)" }}>{Rk(r.projGP)}</td>
+                      <td className="mono">{Rk(r.actGP)}</td>
+                      <td className="mono" style={{ color: clr }}>{r.actGP >= r.projGP ? "+" : ""}{Rk(r.actGP - r.projGP)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Annual</td>
+                  <td className="mono">{(s.orders[0] || 0).toFixed(0)}</td>
+                  <td className="mono">{MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[s.id][mi]||0),0).toFixed(1)}</td>
+                  <td></td>
+                  <td className="mono">{Rk((s.orders[0]||0) * gpu(s.id))}</td>
+                  <td className="mono">{Rk(MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[s.id][mi]||0)*gpu(s.id),0))}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ---- P&L VIEW ---- */}
+      {view === "pl" && (
+        <>
+          <div className="grid g2" style={{ marginBottom: 16 }}>
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 12 }}>Indirect expenses (from AUK MIS)</div>
+              <div className="grid g2">
+                <div className="field"><label>HR / salaries (R/month)</label>
+                  <input className="inp num" value={misIndirect.hr} onChange={(e) => setMisIndirect((m) => ({ ...m, hr: parseFloat(e.target.value)||0 }))} />
+                  <span className="hint" style={{ fontSize: 10.5 }}>CEO + admin + AI + accounts</span>
+                </div>
+                <div className="field"><label>Other (R/month)</label>
+                  <input className="inp num" value={misIndirect.other} onChange={(e) => setMisIndirect((m) => ({ ...m, other: parseFloat(e.target.value)||0 }))} />
+                  <span className="hint" style={{ fontSize: 10.5 }}>Rent, fuel, car, comms, levies…</span>
+                </div>
+              </div>
+              <div className="hint" style={{ marginTop: 10 }}>Total: <b style={{ color: "var(--ink)" }}>{Rk(indirect)}/month</b> = <b>{Rk(indirect * 12)}/year</b></div>
+            </div>
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 12 }}>YTD summary ({activeMonths || 1} month{activeMonths !== 1 ? "s" : ""})</div>
+              <div className="grid g2">
+                <Kpi label="Projected GP" val={Rk(ytdProjGP)} foot="From marketing model" fill={0.7} accent="var(--brass)" />
+                <Kpi label="Actual GP" val={Rk(ytdActGP)} foot="Based on actuals entered" fill={0.6} accent="var(--teal)" />
+                <Kpi label={ytdVar >= 0 ? "GP surplus" : "GP shortfall"} val={Rk(Math.abs(ytdVar))} foot={ytdVar >= 0 ? "Ahead of plan" : "Behind plan"} fill={0.5} accent={ytdVar >= 0 ? "var(--green)" : "var(--red)"} />
+                <Kpi label="Operating profit (actual)" val={Rk(ytdActGP - indirect * Math.max(activeMonths,1))} foot="After indirect expenses" fill={0.5} accent={ytdActGP - indirect * Math.max(activeMonths,1) >= 0 ? "var(--green)" : "var(--red)"} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr><th>Month</th><th>Proj GP</th><th>Actual GP</th><th>GP Variance</th><th>Indirect</th><th>Proj Op Profit</th><th>Actual Op Profit</th></tr>
+              </thead>
+              <tbody>
+                {monthlyAgg.map((m) => {
+                  const gpV = m.actGP - m.projGP;
+                  const opV = m.actProfit - m.projProfit;
+                  const clr = gpV >= 0 ? "var(--green)" : "var(--red)";
+                  return (
+                    <tr key={m.month}>
+                      <td className="svc">{m.month}</td>
+                      <td className="mono" style={{ color: "var(--slate)" }}>{Rk(m.projGP)}</td>
+                      <td className="mono">{Rk(m.actGP)}</td>
+                      <td className="mono" style={{ color: clr }}>{gpV >= 0 ? "+" : ""}{Rk(gpV)}</td>
+                      <td className="mono" style={{ color: "var(--slate)" }}>{Rk(indirect)}</td>
+                      <td className="mono" style={{ color: m.projProfit >= 0 ? "var(--teal)" : "var(--red)" }}>{Rk(m.projProfit)}</td>
+                      <td className="mono" style={{ color: m.actProfit >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{Rk(m.actProfit)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Annual</td>
+                  <td className="mono">{Rk(monthlyAgg.reduce((a,m)=>a+m.projGP,0))}</td>
+                  <td className="mono">{Rk(monthlyAgg.reduce((a,m)=>a+m.actGP,0))}</td>
+                  <td></td>
+                  <td className="mono">{Rk(indirect*12)}</td>
+                  <td className="mono">{Rk(monthlyAgg.reduce((a,m)=>a+m.projProfit,0))}</td>
+                  <td className="mono">{Rk(monthlyAgg.reduce((a,m)=>a+m.actProfit,0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="divh"><h3>Projected vs actual GP · all 12 months</h3><div className="ln" /></div>
+          <div className="card">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={monthlyAgg} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f4867" vertical={false} />
+                <XAxis dataKey="month" stroke="#8ba3bd" fontSize={12} />
+                <YAxis stroke="#8ba3bd" fontSize={11} tickFormatter={(v) => "R" + (v / 1000).toFixed(0) + "k"} />
+                <Tooltip contentStyle={ttStyle} formatter={(v) => R(v)} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="projGP" name="Projected GP" fill="var(--brass)" opacity={0.7} radius={[3,3,0,0]} />
+                <Bar dataKey="actGP" name="Actual GP" fill="var(--teal)" radius={[3,3,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+
+      {/* ---- PIPELINE VIEW ---- */}
+      {view === "pipeline" && (
+        <>
+          <div className="note" style={{ marginBottom: 14 }}>
+            These are AUK's real prospective customers from the MIS. Add contact names, update stages as deals move, and track deal values. This feeds the marketing effort — when a prospect converts, enter their actuals on the service tracker.
+          </div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <Kpi label="Open pipeline" val={Rk(openVal)} foot={`${prospects.filter(p=>p.stage!=="Won").length} prospects`} fill={0.7} accent="var(--brass)" />
+            <Kpi label="Won" val={Rk(wonVal)} foot={`${prospects.filter(p=>p.stage==="Won").length} deals closed`} fill={0.5} accent="var(--green)" />
+          </div>
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr><th>Company</th><th>Contact name</th><th>Service</th><th>Stage</th><th>Deal value (R)</th></tr>
+              </thead>
+              <tbody>
+                {prospects.map((p) => (
+                  <tr key={p.id}>
+                    <td className="svc">{p.co}</td>
+                    <td><input className="cellinp" style={{ width: 150, textAlign: "left" }} placeholder="Contact name" value={p.name} onChange={(e) => updP(p.id, "name", e.target.value)} /></td>
+                    <td style={{ textAlign: "left" }}>
+                      <select className="sel" style={{ padding: "5px 8px", fontSize: 12 }} value={p.svc} onChange={(e) => updP(p.id, "svc", e.target.value)}>
+                        {SEED.map((sv) => <option key={sv.id} value={sv.name}>{sv.name}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ textAlign: "left" }}>
+                      <select className="sel" style={{ padding: "5px 8px", fontSize: 12, color: STAGECLR[p.stage], fontWeight: 600 }} value={p.stage} onChange={(e) => updP(p.id, "stage", e.target.value)}>
+                        {STAGES.map((st) => <option key={st} value={st} style={{ color: "var(--ink)" }}>{st}</option>)}
+                      </select>
+                    </td>
+                    <td><input className="cellinp" value={p.val} onChange={(e) => updP(p.id, "val", parseFloat(e.target.value)||0)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </>
   );
 }
