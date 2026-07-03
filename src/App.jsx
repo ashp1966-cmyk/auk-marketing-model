@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell,
@@ -6,7 +6,7 @@ import {
 import {
   Anchor, Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- theme */
@@ -296,6 +296,19 @@ const PORTFOLIO = {
   },
 };
 
+/* ---------------------------------------------------------------- persistence */
+function loadSaved() {
+  try {
+    const s = localStorage.getItem("auk-marketing-v1");
+    return s ? JSON.parse(s) : {};
+  } catch (e) { return {}; }
+}
+function exportJSON(data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "auk-marketing-" + new Date().toISOString().slice(0,10) + ".json"; a.click();
+}
+
 /* ---------------------------------------------------------------- login gate */
 function Login({ onOk }) {
   const [u, setU] = useState("");
@@ -349,17 +362,19 @@ function Login({ onOk }) {
 export default function App() {
   const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState("dash");
-  const [svcs, setSvcs] = useState(SEED);
-  const [budget, setBudget] = useState({
+  const [saveMsg, setSaveMsg] = useState("");
+  const _saved = loadSaved();
+  const [svcs, setSvcs] = useState(() => _saved.svcs || SEED);
+  const [budget, setBudget] = useState(() => _saved.budget || {
     salesMgr: 1, salesMgrPay: 780000,
     campMgr: 2, campMgrPay: 540000,
     socialAds: 1300000, otherPromo: 900000,
   });
   // MIS actuals state: svcId -> 12 monthly actual unit values
   const [actuals, setActuals] = useState(() =>
-    Object.fromEntries(SEED.map((s) => [s.id, Array(12).fill(0)]))
+    _saved.actuals || Object.fromEntries(SEED.map((s) => [s.id, Array(12).fill(0)]))
   );
-  const [misIndirect, setMisIndirect] = useState({ hr: 24000, other: 62500 });
+  const [misIndirect, setMisIndirect] = useState(() => _saved.misIndirect || { hr: 24000, other: 62500 });
 
   const calc = useMemo(() => {
     const rows = svcs.map((s) => {
@@ -386,6 +401,30 @@ export default function App() {
     budget.salesMgr * budget.salesMgrPay +
     budget.campMgr * budget.campMgrPay +
     budget.socialAds + budget.otherPromo;
+
+  // Auto-save to localStorage whenever key data changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const data = { svcs, budget, actuals, misIndirect, savedAt: new Date().toISOString() };
+        localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
+      } catch (e) {}
+    }, 1200); // 1.2s debounce
+    return () => clearTimeout(timer);
+  }, [svcs, budget, actuals, misIndirect]);
+
+  const saveNow = useCallback(() => {
+    try {
+      const data = { svcs, budget, actuals, misIndirect, savedAt: new Date().toISOString() };
+      localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
+      setSaveMsg("Saved ✓");
+      setTimeout(() => setSaveMsg(""), 2500);
+    } catch (e) { setSaveMsg("Save failed"); }
+  }, [svcs, budget, actuals, misIndirect]);
+
+  const downloadBackup = useCallback(() => {
+    exportJSON({ svcs, budget, actuals, misIndirect, savedAt: new Date().toISOString() });
+  }, [svcs, budget, actuals, misIndirect]);
 
   const funnelCalc = useMemo(() => {
     const rows = calc.rows.map((r) => {
@@ -441,6 +480,13 @@ export default function App() {
         <div className="pill" style={{ background: "var(--navy-700)", color: "var(--slate)" }}>
           <Compass size={14} /> v1 · ZAR · 3-year plan
         </div>
+        <button className="btn sm" onClick={saveNow}
+          style={{ background: saveMsg ? "var(--green)" : "var(--brass)", color: "var(--navy-900)", minWidth: 90 }}>
+          <Save size={14} /> {saveMsg || "Save"}
+        </button>
+        <button className="btn ghost sm" onClick={downloadBackup} title="Download backup JSON">
+          <Download size={14} />
+        </button>
         <button className="btn ghost sm" onClick={() => setAuthed(false)} title="Sign out">
           <LogOut size={15} /> Sign out
         </button>
