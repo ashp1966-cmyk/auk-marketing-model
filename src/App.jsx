@@ -328,6 +328,21 @@ function exportJSON(data) {
   a.download = "auk-marketing-" + new Date().toISOString().slice(0,10) + ".json"; a.click();
 }
 
+/* ---------------------------------------------------------------- portfolio item state */
+function initPortfolioItems(saved) {
+  if (saved) return saved;
+  const result = {};
+  Object.entries(PORTFOLIO).forEach(([id, pd]) => {
+    if (pd && pd.groups) {
+      result[id] = pd.groups.map((g) => ({
+        title: g.title,
+        items: g.items.map((it) => ({ ...it, usp: it.usp || "" })),
+      }));
+    }
+  });
+  return result;
+}
+
 /* ---------------------------------------------------------------- login gate */
 function Login({ onOk }) {
   const [u, setU] = useState("");
@@ -383,6 +398,7 @@ export default function App() {
   const [tab, setTab] = useState("dash");
   const [saveMsg, setSaveMsg] = useState("");
   const _saved = loadSaved();
+  const [portfolioItems, setPortfolioItems] = useState(() => initPortfolioItems(_saved.portfolioItems));
   const [svcs, setSvcs] = useState(() => _saved.svcs || SEED);
   const [budget, setBudget] = useState(() => _saved.budget || {
     salesMgr: 1, salesMgrPay: 780000,
@@ -425,25 +441,25 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        const data = { svcs, budget, actuals, misIndirect, savedAt: new Date().toISOString() };
+        const data = { svcs, budget, actuals, misIndirect, portfolioItems, savedAt: new Date().toISOString() };
         localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       } catch (e) {}
     }, 1200); // 1.2s debounce
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems]);
 
   const saveNow = useCallback(() => {
     try {
-      const data = { svcs, budget, actuals, misIndirect, savedAt: new Date().toISOString() };
+      const data = { svcs, budget, actuals, misIndirect, portfolioItems, savedAt: new Date().toISOString() };
       localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       setSaveMsg("Saved ✓");
       setTimeout(() => setSaveMsg(""), 2500);
     } catch (e) { setSaveMsg("Save failed"); }
-  }, [svcs, budget, actuals, misIndirect]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems]);
 
   const downloadBackup = useCallback(() => {
-    exportJSON({ svcs, budget, actuals, misIndirect, savedAt: new Date().toISOString() });
-  }, [svcs, budget, actuals, misIndirect]);
+    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, savedAt: new Date().toISOString() });
+  }, [svcs, budget, actuals, misIndirect, portfolioItems]);
 
   const funnelCalc = useMemo(() => {
     const rows = calc.rows.map((r) => {
@@ -523,7 +539,7 @@ export default function App() {
       <div className="wrap">
         {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
         {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} />}
-        {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} />}
+        {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
         {tab === "rev" && <Revenue calc={calc} />}
         {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
         {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} />}
@@ -684,11 +700,13 @@ function Inputs({ svcs, setSvcs }) {
 }
 
 /* ---------------------------------------------------------------- portfolio */
-function Portfolio({ svcs, setSvcs }) {
-  const [sel, setSel] = useState(svcs[0]?.name || "");
-  const s = svcs.find((x) => x.name === sel) || svcs[0];
+function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
+  const [sel, setSel] = useState(svcs[0]?.id);
+  const s = svcs.find((x) => x.id === sel) || svcs[0];
   const p = PORTFOLIO[s?.id];
   const isConsult = s?.id === 3 || s?.id === 4;
+  const groups = portfolioItems[s?.id] || p?.groups || [];
+
   const setOrder = (idx, val) => {
     const n = isNaN(parseFloat(val)) ? 0 : parseFloat(val);
     setSvcs((prev) => prev.map((x) => {
@@ -696,26 +714,49 @@ function Portfolio({ svcs, setSvcs }) {
       const o = [...x.orders]; o[idx] = n; return { ...x, orders: o };
     }));
   };
+
+  const updItem = (gi, ii, key, val) => {
+    setPortfolioItems((prev) => {
+      const cur = prev[s.id] || groups.map((g) => ({ ...g, items: g.items.map((it) => ({ ...it, usp: it.usp || "" })) }));
+      const next = cur.map((g, gIdx) => gIdx !== gi ? g : {
+        ...g, items: g.items.map((it, iIdx) => iIdx !== ii ? it : { ...it, [key]: val }),
+      });
+      return { ...prev, [s.id]: next };
+    });
+  };
+
+  const addItem = (gi) => {
+    setPortfolioItems((prev) => {
+      const cur = prev[s.id] || groups;
+      const next = cur.map((g, gIdx) => gIdx !== gi ? g : {
+        ...g, items: [...g.items, { name: "", seg: "", out: "", usp: "" }],
+      });
+      return { ...prev, [s.id]: next };
+    });
+  };
+
   const [lp, setLp] = useState({ invoice: 612066, duties: 0, freight: 29000, markup: 15 });
   const setL = (k, v) => setLp((o) => ({ ...o, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const landing = (lp.invoice + lp.duties + lp.freight) * (1 + lp.markup / 100);
+  const hasOut = groups.some((g) => g.items.some((it) => it.out !== undefined));
+  const hasCode = groups.some((g) => g.items.some((it) => it.code !== undefined));
 
   return (
     <>
       <div className="sechead">
         <div><div className="eyebrow">What we sell &amp; to whom</div><h2>Portfolio</h2></div>
-        <div className="sub">The offerings behind each revenue line, and the segments they serve.</div>
+        <div className="sub">Edit any field inline — Offering, Segment, Outcome and USP. Changes are saved automatically.</div>
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {svcs.map((x) => (
-          <button key={x.id} className={"navb" + (sel === x.name ? " on" : "")} onClick={() => setSel(x.name)} style={{ fontSize: 13, padding: "8px 12px" }}>{x.name}</button>
+          <button key={x.id} className={"navb" + (sel === x.id ? " on" : "")} onClick={() => setSel(x.id)} style={{ fontSize: 13, padding: "8px 12px" }}>{x.name}</button>
         ))}
       </div>
 
       {p ? (
         <>
-          <div className={isConsult ? "note" : "note"} style={{ marginBottom: 16 }}>
+          <div className="note" style={{ marginBottom: 16 }}>
             {isConsult ? <><b>Client expectations.</b> {p.note.replace("What clients expect: ", "")}</> : p.note}
           </div>
 
@@ -732,10 +773,9 @@ function Portfolio({ svcs, setSvcs }) {
               <div className="field">
                 <label>Addressable market /yr</label>
                 <div className="mono" style={{ padding: "9px 0", fontSize: 18 }}>{s.market.toLocaleString()}</div>
-                <span className="hint" style={{ fontSize: 11 }}>Edit on the Inputs tab</span>
+                <span className="hint" style={{ fontSize: 11 }}>Edit on Inputs tab</span>
               </div>
             </div>
-            <div className="hint" style={{ marginTop: 10 }}>These orders flow straight into Inputs &amp; Assumptions (share auto-computed), Revenue &amp; Margins, and the Funnel Plan — which converts them into the campaign activity and budget required.</div>
           </div>
 
           {p.segsCust && (
@@ -750,28 +790,53 @@ function Portfolio({ svcs, setSvcs }) {
             </div>
           )}
 
-          {p.groups.map((g) => (
-            <div key={g.title}>
+          {groups.map((g, gi) => (
+            <div key={gi}>
               <div className="divh"><h3>{g.title}</h3><div className="ln" /></div>
               <div className="card" style={{ overflowX: "auto" }}>
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Offering</th>{g.items[0]?.code !== undefined && <th>Code</th>}
-                      <th>Segment</th>{g.items[0]?.out !== undefined && <th>Outcome</th>}
+                      <th style={{ minWidth: 200 }}>Offering</th>
+                      {hasCode && <th>Code</th>}
+                      <th style={{ minWidth: 160 }}>Segment</th>
+                      {hasOut && <th style={{ minWidth: 160 }}>Outcome</th>}
+                      <th style={{ minWidth: 200, color: "var(--brass)" }}>USP</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {g.items.map((it, i) => (
-                      <tr key={i}>
-                        <td className="svc" style={{ whiteSpace: "normal" }}>{it.name}</td>
-                        {g.items[0]?.code !== undefined && <td style={{ textAlign: "left" }}><span className="tag">{it.code || "—"}</span></td>}
-                        <td style={{ textAlign: "left", color: "var(--slate)" }}>{it.seg}</td>
-                        {g.items[0]?.out !== undefined && <td style={{ textAlign: "left", color: "var(--teal)" }}>{it.out}</td>}
+                    {g.items.map((it, ii) => (
+                      <tr key={ii}>
+                        <td>
+                          <input className="cellinp" style={{ width: "100%", minWidth: 190, textAlign: "left", fontWeight: 600, color: "var(--ink)" }}
+                            value={it.name} placeholder="Offering name"
+                            onChange={(e) => updItem(gi, ii, "name", e.target.value)} />
+                        </td>
+                        {hasCode && <td style={{ textAlign: "left" }}><span className="tag">{it.code || "—"}</span></td>}
+                        <td>
+                          <input className="cellinp" style={{ width: "100%", minWidth: 150, textAlign: "left", color: "var(--slate)" }}
+                            value={it.seg} placeholder="Target segment"
+                            onChange={(e) => updItem(gi, ii, "seg", e.target.value)} />
+                        </td>
+                        {hasOut && (
+                          <td>
+                            <input className="cellinp" style={{ width: "100%", minWidth: 150, textAlign: "left", color: "var(--teal)" }}
+                              value={it.out || ""} placeholder="Value outcome"
+                              onChange={(e) => updItem(gi, ii, "out", e.target.value)} />
+                          </td>
+                        )}
+                        <td>
+                          <input className="cellinp" style={{ width: "100%", minWidth: 190, textAlign: "left", color: "var(--brass)" }}
+                            value={it.usp || ""} placeholder="Why AUK wins this…"
+                            onChange={(e) => updItem(gi, ii, "usp", e.target.value)} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                <button className="btn ghost sm" style={{ marginTop: 12 }} onClick={() => addItem(gi)}>
+                  <Plus size={14} /> Add offering
+                </button>
               </div>
             </div>
           ))}
@@ -780,11 +845,11 @@ function Portfolio({ svcs, setSvcs }) {
             <>
               <div className="divh"><h3>Landing-price calculator</h3><div className="ln" /></div>
               <div className="card">
-                <div className="hint" style={{ marginBottom: 14 }}>Landing price = (commercial invoice + duties excl. VAT + freight &amp; transport) &times; (1 + markup). This is the "value outcome" the customer cares about.</div>
+                <div className="hint" style={{ marginBottom: 14 }}>Landing price = (commercial invoice + duties excl. VAT + freight &amp; transport) &times; (1 + markup).</div>
                 <div className="grid g4">
                   <div className="field"><label>Commercial invoice / CFR (R)</label><input className="inp num" value={lp.invoice} onChange={(e) => setL("invoice", e.target.value)} /></div>
                   <div className="field"><label>Duties excl. VAT (R)</label><input className="inp num" value={lp.duties} onChange={(e) => setL("duties", e.target.value)} /></div>
-                  <div className="field"><label>Freight & transport (R)</label><input className="inp num" value={lp.freight} onChange={(e) => setL("freight", e.target.value)} /></div>
+                  <div className="field"><label>Freight &amp; transport (R)</label><input className="inp num" value={lp.freight} onChange={(e) => setL("freight", e.target.value)} /></div>
                   <div className="field"><label>Markup %</label><input className="inp num" value={lp.markup} onChange={(e) => setL("markup", e.target.value)} /></div>
                 </div>
                 <div style={{ marginTop: 16 }}>
