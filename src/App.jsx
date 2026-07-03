@@ -186,7 +186,7 @@ const CLIENT_EXPECT = "What clients expect: expert, tailored advice & strategy; 
 
 /* Product/service portfolio — from AUK's course catalogue and consulting service map */
 const PORTFOLIO = {
-  "Training & skills development": {
+  6: /* Training & skills development */ {
     note: "AUK's live course catalogue. Seafarer maritime courses feed the shore-inspector pipeline; SMME courses cross-sell business & AI services.",
     groups: [
       { title: "Logistics & shipping", items: [
@@ -219,7 +219,7 @@ const PORTFOLIO = {
       ] },
     ],
   },
-  "Maritime consulting services": {
+  3: /* Maritime consulting services */ {
     note: CLIENT_EXPECT,
     groups: [
       { title: "Maritime, port & shipping", items: [
@@ -238,7 +238,7 @@ const PORTFOLIO = {
       ] },
     ],
   },
-  "Business consulting (SA)": {
+  4: /* Business consulting (SA) */ {
     note: CLIENT_EXPECT,
     groups: [
       { title: "Strategy & growth (any industry)", items: [
@@ -256,7 +256,7 @@ const PORTFOLIO = {
       ] },
     ],
   },
-  "Ship inspection services": {
+  2: /* Ship inspection services */ {
     note: "Sold to ship managers & technical superintendents worldwide, primarily via LinkedIn.",
     groups: [ { title: "Survey types", items: [
       { name: "Condition & pre-purchase surveys", seg: "Ship managers" },
@@ -266,16 +266,35 @@ const PORTFOLIO = {
       { name: "PSC / RightShip readiness", seg: "Managers" },
     ] } ],
   },
-  "Cargo inspection & loss adjusting": {
-    note: "Sold to insurers, cargo owners, traders and P&I clubs.",
-    groups: [ { title: "Services", items: [
-      { name: "Draft & quantity surveys", seg: "Traders & owners" },
-      { name: "Sampling & quality inspection", seg: "Cargo owners" },
-      { name: "Loss & claims adjustment", seg: "Insurers · P&I" },
-      { name: "Marine casualty & damage survey", seg: "Insurers" },
-    ] } ],
+  5: /* Cargo inspection & loss adjusting */ {
+    note: "Sold to insurers, cargo owners, traders and P&I clubs across SA and the wider region. AUK has a track record since 2012 — 154 vessel inspections, 21 consulting mandates and 2,219 logistics engagements on file.",
+    groups: [
+      { title: "Quantity & condition surveys", items: [
+        { name: "Draft surveys", seg: "Traders · charterers · owners", out: "Verified cargo quantity at load/discharge" },
+        { name: "Quantity / tally surveys", seg: "Cargo owners · traders", out: "Independent count & measurement" },
+        { name: "Condition inspection on arrival / departure", seg: "Owners · insurers", out: "Documented cargo state" },
+        { name: "Sampling & quality inspection", seg: "Cargo owners · buyers", out: "Quality certification" },
+      ] },
+      { title: "Loss adjustment & claims", items: [
+        { name: "Loss & claims adjustment", seg: "Insurers · P&I clubs", out: "Quantified loss settlement" },
+        { name: "Marine casualty & damage survey", seg: "Insurers · owners", out: "Cause & extent of damage" },
+        { name: "Accident investigation", seg: "P&I clubs · insurers", out: "Root cause & liability report" },
+        { name: "Damage assessment", seg: "Owners · underwriters", out: "Repair cost estimate" },
+      ] },
+      { title: "Risk & warranty", items: [
+        { name: "Marine warranty survey", seg: "Underwriters · banks", out: "Independent risk sign-off" },
+        { name: "Loss prevention survey", seg: "P&I clubs", out: "Prevent future claims" },
+        { name: "Seaworthiness investigation", seg: "Owners · P&I", out: "Fitness-for-purpose certification" },
+        { name: "Failure investigations", seg: "Owners · insurers", out: "Technical root cause analysis" },
+      ] },
+      { title: "Specialist & advisory", items: [
+        { name: "Advice on repair solutions & costs", seg: "Owners · underwriters", out: "Cost-optimised repair path" },
+        { name: "Loss of hire surveys", seg: "Owners · charterers", out: "Revenue-loss quantification" },
+        { name: "Port & maritime risk assessment", seg: "Port authorities · operators", out: "Risk register & mitigation plan" },
+      ] },
+    ],
   },
-  "Logistics": {
+  1: /* Logistics */ {
     note: "Delivered through the AUK agent & provider network (Imperial, CWT, transporters, stevedores) — a referral-led channel rather than paid ads.",
     segsCust: ["Exporters", "Importers", "Freight forwarders", "Traders"],
     segsCargo: ["Container & Air", "Breakbulk", "Bulk (Export/Import)"],
@@ -668,8 +687,8 @@ function Inputs({ svcs, setSvcs }) {
 function Portfolio({ svcs, setSvcs }) {
   const [sel, setSel] = useState(svcs[0]?.name || "");
   const s = svcs.find((x) => x.name === sel) || svcs[0];
-  const p = PORTFOLIO[s?.name];
-  const isConsult = p?.note === CLIENT_EXPECT;
+  const p = PORTFOLIO[s?.id];
+  const isConsult = s?.id === 3 || s?.id === 4;
   const setOrder = (idx, val) => {
     const n = isNaN(parseFloat(val)) ? 0 : parseFloat(val);
     setSvcs((prev) => prev.map((x) => {
@@ -1632,4 +1651,3 @@ function CRM() {
     </>
   );
 }
- 
