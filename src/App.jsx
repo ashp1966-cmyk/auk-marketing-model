@@ -799,9 +799,9 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
                     <tr>
                       <th style={{ minWidth: 200 }}>Offering</th>
                       {hasCode && <th>Code</th>}
-                      <th style={{ minWidth: 160 }}>Segment</th>
-                      {hasOut && <th style={{ minWidth: 160 }}>Outcome</th>}
-                      <th style={{ minWidth: 200, color: "var(--brass)" }}>USP</th>
+                      <th style={{ minWidth: 160, textAlign: "left" }}>Segment</th>
+                      {hasOut && <th style={{ minWidth: 160, textAlign: "left" }}>Outcome</th>}
+                      <th style={{ minWidth: 200, color: "var(--brass)", textAlign: "left" }}>USP &amp; Target Audience</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -827,7 +827,7 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
                         )}
                         <td>
                           <input className="cellinp" style={{ width: "100%", minWidth: 190, textAlign: "left", color: "var(--brass)" }}
-                            value={it.usp || ""} placeholder="Why AUK wins this…"
+                            value={it.usp || ""} placeholder="USP + who specifically to target…"
                             onChange={(e) => updItem(gi, ii, "usp", e.target.value)} />
                         </td>
                       </tr>
