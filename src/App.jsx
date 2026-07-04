@@ -286,8 +286,6 @@ const PARTNERS = [
     csf: "Track record + marketing + technical expertise", note: "Marketing not yet started — motivate team training" },
   { name: "Sankh Metal SA", stake: "50% shareholding", scope: "Ferroalloy plant production & other metallurgical processes",
     csf: "Track record + funding", note: "Projects have long lead times; affiliate-driven revenue" },
-  { name: "Jista", stake: "Investment banking partner", scope: "Trade finance & project finance",
-    csf: "Track record + technical expertise", note: "Trade finance performing well; project finance has long lead time" },
   { name: "3C Engineering", stake: "26% shareholding (13 years)", scope: "Consortium partner — project development & engineering",
     csf: "Consortium strength + engineering capability", note: "Pipeline of development projects" },
 ];
@@ -1487,6 +1485,52 @@ function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, se
   const delIdea = (id) => setIdeas((prev) => prev.filter((x) => x.id !== id));
   const IDEA_STATUS = ["Idea", "Exploring", "Active", "Parked"];
   const IDEA_CLR = { Idea: "var(--slate)", Exploring: "var(--amber)", Active: "var(--green)", Parked: "var(--slate-dim)" };
+  const updRmField = (id, k, v) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, [k]: v } : r)));
+  const addRm = () => setRoadmap((prev) => [...prev, { id: Date.now(), phase: "New", item: "", status: "Pending" }]);
+  const delRm = (id) => setRoadmap((prev) => prev.filter((r) => r.id !== id));
+
+  /* ---- AI Trend Radar ---- */
+  const TREND_AREAS = ["Maritime & shipping", "Mining & metallurgy", "Logistics & freight", "Training & skills development", "ESG & decarbonisation", "AI & digitalisation in industry"];
+  const [trendArea, setTrendArea] = useState(TREND_AREAS[0]);
+  const [trendBusy, setTrendBusy] = useState(false);
+  const [trendErr, setTrendErr] = useState("");
+  const [scan, setScan] = useState(null);
+
+  const scanTrends = async () => {
+    setTrendBusy(true); setTrendErr("");
+    const prompt = `You are a senior strategy advisor to AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com). Its six service lines: logistics/freight forwarding, ship inspection, maritime consulting, business consulting (SA), cargo inspection & loss adjusting, training & skills development. Its strategy: low-capex high-margin services, digital-first, ESG focus, Africa–Middle East–India footprint. Constraints: limited capital; avoid trading, smelting and commodity automation.
+
+Search the web for the LATEST trends and developments (news from the past 3-6 months) in: ${trendArea} — globally and in South Africa.
+
+Then respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
+{"summary":"2-3 sentence overview of what is happening right now","trends":[{"trend":"short trend name","detail":"1-2 sentences on what is happening, citing specifics found in the search","impact":"High|Medium|Low","effect":"Opportunity|Threat|Both","implication":"1-2 sentences on what this means for AUK specifically given its profile","adjustment":"one concrete action AUK should take in response"}]}
+Return exactly 5 trends, ranked most important first.`;
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 3000,
+          messages: [{ role: "user", content: prompt }],
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
+      const jsonStart = text.indexOf("{");
+      const parsed = JSON.parse(text.slice(jsonStart));
+      setScan({ area: trendArea, at: new Date().toLocaleString(), ...parsed });
+    } catch (e) {
+      setTrendErr("Scan failed — try again in a moment.");
+    } finally { setTrendBusy(false); }
+  };
+
+  const adjustToRoadmap = (adj) => {
+    setRoadmap((prev) => [...prev, { id: Date.now(), phase: "Trend response", item: adj, status: "Pending" }]);
+  };
+  const EFFECT_CLR = { Opportunity: "var(--green)", Threat: "var(--red)", Both: "var(--amber)" };
+  const IMPACT_CLR = { High: "var(--red)", Medium: "var(--amber)", Low: "var(--slate)" };
 
   const totT = svcs.reduce((a, s) => a + (goals5[s.id]?.turnover || 0), 0);
   const totP = svcs.reduce((a, s) => a + (goals5[s.id]?.profit || 0), 0);
@@ -1507,7 +1551,7 @@ function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, se
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {[["goals","5-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"]].map(([v,l]) => (
+        {[["goals","5-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"],["radar","AI Trend Radar"]].map(([v,l]) => (
           <button key={v} className={"navb" + (view === v ? " on" : "")} onClick={() => setView(v)} style={{ fontSize: 13, padding: "8px 12px" }}>{l}</button>
         ))}
       </div>
@@ -1730,23 +1774,76 @@ function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, se
           </div>
           <div className="card" style={{ overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>Phase</th><th style={{ textAlign: "left", minWidth: 320 }}>Action</th><th>Status</th></tr></thead>
+              <thead><tr><th style={{ textAlign: "left" }}>Phase</th><th style={{ textAlign: "left", minWidth: 320 }}>Action</th><th style={{ textAlign: "left" }}>Status</th><th></th></tr></thead>
               <tbody>
                 {roadmap.map((r) => (
                   <tr key={r.id}>
-                    <td className="svc" style={{ whiteSpace: "nowrap" }}>{r.phase}</td>
-                    <td style={{ textAlign: "left", color: "var(--slate)", whiteSpace: "normal", fontSize: 13 }}>{r.item}</td>
+                    <td><input className="cellinp" style={{ width: 130, textAlign: "left", fontWeight: 600, color: "var(--ink)" }} value={r.phase} onChange={(e) => updRmField(r.id, "phase", e.target.value)} /></td>
+                    <td><input className="cellinp" style={{ width: "100%", minWidth: 300, textAlign: "left", color: "var(--slate)" }} value={r.item} placeholder="Describe the action…" onChange={(e) => updRmField(r.id, "item", e.target.value)} /></td>
                     <td style={{ textAlign: "left" }}>
                       <select className="sel" style={{ padding: "5px 8px", fontSize: 12.5, color: RM_CLR[r.status], fontWeight: 600 }} value={r.status} onChange={(e) => setRm(r.id, e.target.value)}>
                         {RM_STATUS.map((st) => <option key={st} value={st} style={{ color: "var(--ink)" }}>{st}</option>)}
                       </select>
                     </td>
+                    <td><button className="iconbtn" onClick={() => delRm(r.id)}><Trash2 size={15} /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <div className="hint" style={{ marginTop: 10 }}>Update statuses as work completes — they save automatically.</div>
+            <button className="btn ghost sm" style={{ marginTop: 12 }} onClick={addRm}><Plus size={14} /> Add action</button>
+            <div className="hint" style={{ marginTop: 10 }}>Fully editable — phases, actions and statuses all save automatically. AI Trend Radar can also push adjustments here.</div>
           </div>
+        </>
+      )}
+
+      {view === "radar" && (
+        <>
+          <div className="note" style={{ marginBottom: 16 }}>
+            <b>How it works:</b> pick a domain and Claude searches the live web for the latest developments, assesses the impact on AUK specifically (given its strategy, footprint and constraints), and recommends concrete adjustments — each of which you can push straight onto the Roadmap.
+          </div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="grid g2">
+              <div className="field">
+                <label>Domain to scan</label>
+                <select className="sel" value={trendArea} onChange={(e) => setTrendArea(e.target.value)}>
+                  {TREND_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+                <button className="btn" onClick={scanTrends} disabled={trendBusy}>
+                  {trendBusy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Scanning the web…</> : <><Radar size={16} /> Scan trends</>}
+                </button>
+                {trendErr && <span style={{ color: "var(--red)", fontSize: 13 }}>{trendErr}</span>}
+              </div>
+            </div>
+          </div>
+
+          {scan && (
+            <>
+              <div className="card" style={{ marginBottom: 16, borderColor: "var(--brass)" }}>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>{scan.area} · scanned {scan.at}</div>
+                <div style={{ fontSize: 14.5, lineHeight: 1.6 }}>{scan.summary}</div>
+              </div>
+              {(scan.trends || []).map((t, i) => (
+                <div className="card" key={i} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                    <div className="disp" style={{ fontSize: 18, fontWeight: 700 }}>{i + 1}. {t.trend}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <span className="pill" style={{ background: "var(--navy-700)", color: IMPACT_CLR[t.impact] || "var(--slate)" }}>{t.impact} impact</span>
+                      <span className="pill" style={{ background: "var(--navy-700)", color: EFFECT_CLR[t.effect] || "var(--slate)" }}>{t.effect}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13.5, color: "var(--slate)", marginBottom: 10 }}>{t.detail}</div>
+                  <div style={{ fontSize: 13.5, marginBottom: 10 }}><b style={{ color: "var(--teal)" }}>What it means for AUK:</b> <span style={{ color: "var(--slate)" }}>{t.implication}</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--navy-850)", border: "1px dashed var(--line)", borderRadius: 10, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 13.5 }}><b style={{ color: "var(--brass)" }}>Adjustment:</b> <span style={{ color: "var(--ink)" }}>{t.adjustment}</span></div>
+                    <button className="btn ghost sm" onClick={() => adjustToRoadmap(t.adjustment)}><Plus size={13} /> Add to roadmap</button>
+                  </div>
+                </div>
+              ))}
+              <div className="hint">AI-generated from live web results — verify specifics before committing resources. Added adjustments appear on the Roadmap under "Trend response".</div>
+            </>
+          )}
         </>
       )}
     </>
