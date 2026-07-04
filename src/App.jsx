@@ -269,14 +269,50 @@ const ANSOFF = [
   { cell: "New market × New services", code: "2B", steps: "Enter only with a partner or proven demand — highest risk quadrant" },
 ];
 
-const COMPETITORS = [
-  ["Kuehne + Nagel", "No. 1 ocean freight forwarder in the world"],
-  ["DAMCO (Maersk)", "AP Moller division; 10th largest globally"],
-  ["Agility", "Offices in 100 countries; complex assignments in challenging conditions"],
-  ["DSV Panalpina", "Very big and vast network"],
-  ["JM Baxi", "100 years of establishment (India)"],
-  ["Jeena & Company", "Bonded terminals; own state-of-the-art ERP"],
-  ["LCL Logistics", "Own CFS and warehouses"],
+const COMPETITORS_SEED = [
+  { id: 1, name: "Kuehne + Nagel", adv: "No. 1 ocean freight forwarder in the world", counter: "" },
+  { id: 2, name: "DAMCO (Maersk)", adv: "AP Moller division; 10th largest globally", counter: "" },
+  { id: 3, name: "Agility", adv: "Offices in 100 countries; complex assignments in challenging conditions", counter: "" },
+  { id: 4, name: "DSV Panalpina", adv: "Very big and vast network", counter: "" },
+  { id: 5, name: "JM Baxi", adv: "100 years of establishment (India)", counter: "" },
+  { id: 6, name: "Jeena & Company", adv: "Bonded terminals; own state-of-the-art ERP", counter: "" },
+  { id: 7, name: "LCL Logistics", adv: "Own CFS and warehouses", counter: "" },
+  { id: 8, name: "Idwal", adv: "Digital ship inspection platform at global scale", counter: "" },
+];
+
+/* Confidential — partnership & shareholding structures (internal only) */
+const PARTNERS = [
+  { name: "3CIoT SA", stake: "35% shareholding (12 years)", scope: "Automation & IoT; renewables collaboration",
+    csf: "Track record + marketing + technical expertise", note: "Marketing not yet started — motivate team training" },
+  { name: "Sankh Metal SA", stake: "50% shareholding", scope: "Ferroalloy plant production & other metallurgical processes",
+    csf: "Track record + funding", note: "Projects have long lead times; affiliate-driven revenue" },
+  { name: "Jista", stake: "Investment banking partner", scope: "Trade finance & project finance",
+    csf: "Track record + technical expertise", note: "Trade finance performing well; project finance has long lead time" },
+  { name: "3C Engineering", stake: "26% shareholding (13 years)", scope: "Consortium partner — project development & engineering",
+    csf: "Consortium strength + engineering capability", note: "Pipeline of development projects" },
+];
+
+const IDEAS_SEED = [
+  { id: 1,  cat: "Innovation",  idea: "Drone-based ship & plant inspections", status: "Exploring" },
+  { id: 2,  cat: "Innovation",  idea: "AI co-pilot for inspections — iterative questioning against checklists", status: "Exploring" },
+  { id: 3,  cat: "Innovation",  idea: "AI agent for ships — predictions from vessel, crew & machinery data", status: "Idea" },
+  { id: 4,  cat: "Innovation",  idea: "Big-data analytics products (e.g. market price analysis by area)", status: "Idea" },
+  { id: 5,  cat: "Growth",      idea: "Commission-based agents to market courses & services", status: "Idea" },
+  { id: 6,  cat: "Growth",      idea: "Sponsored inspections — ask corporates (e.g. AMSOL) to sponsor inspection training", status: "Idea" },
+  { id: 7,  cat: "Growth",      idea: "Trade tenders pipeline — systematic tender scanning", status: "Active" },
+  { id: 8,  cat: "Model",       idea: "Membership programme with member discounts", status: "Idea" },
+  { id: 9,  cat: "Model",       idea: "Opportunity-alert subscription — notify subscribers of tenders & jobs", status: "Idea" },
+  { id: 10, cat: "Model",       idea: "Annual rate contracts for repeat inspection clients", status: "Idea" },
+  { id: 11, cat: "Service",     idea: "Supercargo work — voyage attendance for cargo owners", status: "Idea" },
+  { id: 12, cat: "Service",     idea: "Ship cost-saving advisory; ship, plant & industrial repairs", status: "Idea" },
+  { id: 13, cat: "Training",    idea: "On-board role-play training exercises", status: "Idea" },
+  { id: 14, cat: "Training",    idea: "Link training to measurable performance outcomes", status: "Exploring" },
+  { id: 15, cat: "Partnership", idea: "Fendercare — training, condition inspection & AI model", status: "Exploring" },
+  { id: 16, cat: "Partnership", idea: "Tennant — scope collaboration opportunities", status: "Idea" },
+  { id: 17, cat: "Expansion",   idea: "Beira as outlet for Malawi & Zimbabwe cargo", status: "Idea" },
+  { id: 18, cat: "Expansion",   idea: "Chinese electric scooters into Madagascar & Africa", status: "Idea" },
+  { id: 19, cat: "Expansion",   idea: "Dubai office & Cape Town office", status: "Idea" },
+  { id: 20, cat: "Consulting",  idea: "Supply-chain optimisation smart model; SAMSA funding model", status: "Idea" },
 ];
 
 const ROADMAP_SEED = [
@@ -509,6 +545,8 @@ export default function App() {
   const [portfolioItems, setPortfolioItems] = useState(() => initPortfolioItems(_saved.portfolioItems));
   const [goals5, setGoals5] = useState(() => _saved.goals5 || GOALS5_SEED);
   const [roadmap, setRoadmap] = useState(() => _saved.roadmap || ROADMAP_SEED);
+  const [competitors, setCompetitors] = useState(() => _saved.competitors || COMPETITORS_SEED);
+  const [ideas, setIdeas] = useState(() => _saved.ideas || IDEAS_SEED);
   const [svcs, setSvcs] = useState(() => _saved.svcs || SEED);
   const [budget, setBudget] = useState(() => _saved.budget || {
     salesMgr: 1, salesMgrPay: 780000,
@@ -551,25 +589,25 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, savedAt: new Date().toISOString() };
+        const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, savedAt: new Date().toISOString() };
         localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       } catch (e) {}
     }, 1200); // 1.2s debounce
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas]);
 
   const saveNow = useCallback(() => {
     try {
-      const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, savedAt: new Date().toISOString() };
+      const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, savedAt: new Date().toISOString() };
       localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       setSaveMsg("Saved ✓");
       setTimeout(() => setSaveMsg(""), 2500);
     } catch (e) { setSaveMsg("Save failed"); }
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas]);
 
   const downloadBackup = useCallback(() => {
-    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, savedAt: new Date().toISOString() });
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap]);
+    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, savedAt: new Date().toISOString() });
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas]);
 
   const funnelCalc = useMemo(() => {
     const rows = calc.rows.map((r) => {
@@ -658,7 +696,7 @@ export default function App() {
         {tab === "play" && <Playbook />}
         {tab === "crm" && <CRM />}
         {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} />}
-        {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} />}
+        {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} />}
       </div>
     </div>
   );
@@ -1437,10 +1475,18 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
 const RM_STATUS = ["Pending", "In progress", "Done"];
 const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
 
-function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap }) {
+function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas }) {
   const [view, setView] = useState("goals");
   const setG = (id, k, v) => setGoals5((prev) => ({ ...prev, [id]: { ...prev[id], [k]: parseFloat(v) || 0 } }));
   const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+  const updComp = (id, k, v) => setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, [k]: v } : c)));
+  const addComp = () => setCompetitors((prev) => [...prev, { id: Date.now(), name: "", adv: "", counter: "" }]);
+  const delComp = (id) => setCompetitors((prev) => prev.filter((c) => c.id !== id));
+  const updIdea = (id, k, v) => setIdeas((prev) => prev.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
+  const addIdea = () => setIdeas((prev) => [...prev, { id: Date.now(), cat: "Idea", idea: "", status: "Idea" }]);
+  const delIdea = (id) => setIdeas((prev) => prev.filter((x) => x.id !== id));
+  const IDEA_STATUS = ["Idea", "Exploring", "Active", "Parked"];
+  const IDEA_CLR = { Idea: "var(--slate)", Exploring: "var(--amber)", Active: "var(--green)", Parked: "var(--slate-dim)" };
 
   const totT = svcs.reduce((a, s) => a + (goals5[s.id]?.turnover || 0), 0);
   const totP = svcs.reduce((a, s) => a + (goals5[s.id]?.profit || 0), 0);
@@ -1461,7 +1507,7 @@ function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap }) {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {[["goals","5-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["road","Roadmap"]].map(([v,l]) => (
+        {[["goals","5-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"]].map(([v,l]) => (
           <button key={v} className={"navb" + (view === v ? " on" : "")} onClick={() => setView(v)} style={{ fontSize: 13, padding: "8px 12px" }}>{l}</button>
         ))}
       </div>
@@ -1595,14 +1641,82 @@ function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap }) {
           </div>
           <div className="card" style={{ overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>Major competitor (logistics/FF)</th><th style={{ textAlign: "left" }}>Their advantage</th></tr></thead>
+              <thead><tr>
+                <th style={{ textAlign: "left", minWidth: 150 }}>Competitor</th>
+                <th style={{ textAlign: "left", minWidth: 220 }}>Their advantage</th>
+                <th style={{ textAlign: "left", minWidth: 220, color: "var(--brass)" }}>AUK counter-strategy</th>
+                <th></th>
+              </tr></thead>
               <tbody>
-                {COMPETITORS.map(([n, a]) => (
-                  <tr key={n}><td className="svc">{n}</td><td style={{ textAlign: "left", color: "var(--slate)" }}>{a}</td></tr>
+                {competitors.map((c) => (
+                  <tr key={c.id}>
+                    <td><input className="cellinp" style={{ width: "100%", minWidth: 140, textAlign: "left", fontWeight: 600, color: "var(--ink)" }} value={c.name} placeholder="Competitor name" onChange={(e) => updComp(c.id, "name", e.target.value)} /></td>
+                    <td><input className="cellinp" style={{ width: "100%", minWidth: 210, textAlign: "left", color: "var(--slate)" }} value={c.adv} placeholder="What makes them strong" onChange={(e) => updComp(c.id, "adv", e.target.value)} /></td>
+                    <td><input className="cellinp" style={{ width: "100%", minWidth: 210, textAlign: "left", color: "var(--brass)" }} value={c.counter || ""} placeholder="How AUK wins against them…" onChange={(e) => updComp(c.id, "counter", e.target.value)} /></td>
+                    <td><button className="iconbtn" onClick={() => delComp(c.id)}><Trash2 size={15} /></button></td>
+                  </tr>
                 ))}
               </tbody>
             </table>
-            <div className="hint" style={{ marginTop: 10 }}>AUK does not out-scale these players — it out-specialises them: niche maritime expertise, local accreditation, agility and relationships they cannot replicate at their size.</div>
+            <button className="btn ghost sm" style={{ marginTop: 12 }} onClick={addComp}><Plus size={14} /> Add competitor</button>
+            <div className="hint" style={{ marginTop: 10 }}>AUK does not out-scale these players — it out-specialises them. Use the counter-strategy column to write exactly how.</div>
+          </div>
+        </>
+      )}
+
+      {view === "partners" && (
+        <>
+          <div className="note" style={{ marginBottom: 16 }}>
+            <b>Confidential — internal only.</b> AUK's partnership &amp; shareholding structure extends its capability well beyond its own headcount: engineering, metallurgy, IoT and finance capacity on demand.
+          </div>
+          <div className="grid g2">
+            {PARTNERS.map((pt) => (
+              <div className="card" key={pt.name} style={{ borderTop: "3px solid var(--brass)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10, marginBottom: 8 }}>
+                  <div className="disp" style={{ fontSize: 19, fontWeight: 700 }}>{pt.name}</div>
+                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)", whiteSpace: "nowrap" }}>{pt.stake}</span>
+                </div>
+                <div style={{ fontSize: 13.5, color: "var(--ink)", marginBottom: 8 }}>{pt.scope}</div>
+                <div style={{ fontSize: 12.5, color: "var(--slate)", marginBottom: 4 }}><b style={{ color: "var(--teal)" }}>CSF:</b> {pt.csf}</div>
+                <div style={{ fontSize: 12.5, color: "var(--slate-dim)" }}>{pt.note}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {view === "ideas" && (
+        <>
+          <div className="grid g3" style={{ marginBottom: 16 }}>
+            <Kpi label="Ideas in the bank" val={ideas.length} foot="Raw opportunity pipeline" fill={0.7} accent="var(--brass)" />
+            <Kpi label="Being explored" val={ideas.filter((x) => x.status === "Exploring").length} foot="Under evaluation" fill={0.4} accent="var(--amber)" />
+            <Kpi label="Active" val={ideas.filter((x) => x.status === "Active").length} foot="In execution" fill={0.4} accent="var(--green)" />
+          </div>
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr>
+                <th style={{ textAlign: "left" }}>Category</th>
+                <th style={{ textAlign: "left", minWidth: 320 }}>Idea</th>
+                <th style={{ textAlign: "left" }}>Status</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {ideas.map((x) => (
+                  <tr key={x.id}>
+                    <td><input className="cellinp" style={{ width: 110, textAlign: "left", color: "var(--teal)" }} value={x.cat} onChange={(e) => updIdea(x.id, "cat", e.target.value)} /></td>
+                    <td><input className="cellinp" style={{ width: "100%", minWidth: 300, textAlign: "left", color: "var(--ink)" }} value={x.idea} placeholder="Describe the idea…" onChange={(e) => updIdea(x.id, "idea", e.target.value)} /></td>
+                    <td style={{ textAlign: "left" }}>
+                      <select className="sel" style={{ padding: "5px 8px", fontSize: 12.5, color: IDEA_CLR[x.status], fontWeight: 600 }} value={x.status} onChange={(e) => updIdea(x.id, "status", e.target.value)}>
+                        {IDEA_STATUS.map((st) => <option key={st} value={st} style={{ color: "var(--ink)" }}>{st}</option>)}
+                      </select>
+                    </td>
+                    <td><button className="iconbtn" onClick={() => delIdea(x.id)}><Trash2 size={15} /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="btn ghost sm" style={{ marginTop: 12 }} onClick={addIdea}><Plus size={14} /> Add idea</button>
+            <div className="hint" style={{ marginTop: 10 }}>Your innovation pipeline — captured from the strategy workbook. Promote ideas to Exploring → Active as they mature; everything saves automatically.</div>
           </div>
         </>
       )}
