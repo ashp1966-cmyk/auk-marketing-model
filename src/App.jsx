@@ -545,6 +545,7 @@ export default function App() {
   const [roadmap, setRoadmap] = useState(() => _saved.roadmap || ROADMAP_SEED);
   const [competitors, setCompetitors] = useState(() => _saved.competitors || COMPETITORS_SEED);
   const [ideas, setIdeas] = useState(() => _saved.ideas || IDEAS_SEED);
+  const [scans, setScans] = useState(() => _saved.scans || []);
   const [svcs, setSvcs] = useState(() => _saved.svcs || SEED);
   const [budget, setBudget] = useState(() => _saved.budget || {
     salesMgr: 1, salesMgrPay: 780000,
@@ -587,25 +588,25 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, savedAt: new Date().toISOString() };
+        const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, savedAt: new Date().toISOString() };
         localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       } catch (e) {}
     }, 1200); // 1.2s debounce
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
 
   const saveNow = useCallback(() => {
     try {
-      const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, savedAt: new Date().toISOString() };
+      const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, savedAt: new Date().toISOString() };
       localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       setSaveMsg("Saved ✓");
       setTimeout(() => setSaveMsg(""), 2500);
     } catch (e) { setSaveMsg("Save failed"); }
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
 
   const downloadBackup = useCallback(() => {
-    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, savedAt: new Date().toISOString() });
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas]);
+    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, savedAt: new Date().toISOString() });
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
 
   const funnelCalc = useMemo(() => {
     const rows = calc.rows.map((r) => {
@@ -694,7 +695,7 @@ export default function App() {
         {tab === "play" && <Playbook />}
         {tab === "crm" && <CRM />}
         {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} />}
-        {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} />}
+        {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
       </div>
     </div>
   );
@@ -1473,7 +1474,7 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
 const RM_STATUS = ["Pending", "In progress", "Done"];
 const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
 
-function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas }) {
+function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans }) {
   const [view, setView] = useState("goals");
   const setG = (id, k, v) => setGoals5((prev) => ({ ...prev, [id]: { ...prev[id], [k]: parseFloat(v) || 0 } }));
   const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
@@ -1494,7 +1495,8 @@ function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, se
   const [trendArea, setTrendArea] = useState(TREND_AREAS[0]);
   const [trendBusy, setTrendBusy] = useState(false);
   const [trendErr, setTrendErr] = useState("");
-  const [scan, setScan] = useState(null);
+  const [activeScanId, setActiveScanId] = useState(null);
+  const scan = scans.find((x) => x.id === activeScanId) || scans[0] || null;
 
   const scanTrends = async () => {
     setTrendBusy(true); setTrendErr("");
@@ -1520,7 +1522,9 @@ Return exactly 5 trends, ranked most important first.`;
       const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
       const jsonStart = text.indexOf("{");
       const parsed = JSON.parse(text.slice(jsonStart));
-      setScan({ area: trendArea, at: new Date().toLocaleString(), ...parsed });
+      const newScan = { id: Date.now(), area: trendArea, at: new Date().toLocaleString(), ...parsed };
+      setScans((prev) => [newScan, ...prev].slice(0, 20));
+      setActiveScanId(newScan.id);
     } catch (e) {
       setTrendErr("Scan failed — try again in a moment.");
     } finally { setTrendBusy(false); }
@@ -1528,6 +1532,10 @@ Return exactly 5 trends, ranked most important first.`;
 
   const adjustToRoadmap = (adj) => {
     setRoadmap((prev) => [...prev, { id: Date.now(), phase: "Trend response", item: adj, status: "Pending" }]);
+  };
+  const deleteScan = (id) => {
+    setScans((prev) => prev.filter((x) => x.id !== id));
+    if (activeScanId === id) setActiveScanId(null);
   };
   const EFFECT_CLR = { Opportunity: "var(--green)", Threat: "var(--red)", Both: "var(--amber)" };
   const IMPACT_CLR = { High: "var(--red)", Medium: "var(--amber)", Low: "var(--slate)" };
@@ -1818,11 +1826,32 @@ Return exactly 5 trends, ranked most important first.`;
             </div>
           </div>
 
+          {scans.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>Saved scans · {scans.length}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {scans.map((sc) => (
+                  <div key={sc.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <button className={"navb" + (scan?.id === sc.id ? " on" : "")} onClick={() => setActiveScanId(sc.id)} style={{ fontSize: 12, padding: "7px 10px" }}>
+                      {sc.area} <span style={{ opacity: 0.7 }}>· {sc.at.split(",")[0]}</span>
+                    </button>
+                    <button className="iconbtn" onClick={() => deleteScan(sc.id)} title="Delete this scan"><Trash2 size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {scan && (
             <>
               <div className="card" style={{ marginBottom: 16, borderColor: "var(--brass)" }}>
-                <div className="eyebrow" style={{ marginBottom: 6 }}>{scan.area} · scanned {scan.at}</div>
-                <div style={{ fontSize: 14.5, lineHeight: 1.6 }}>{scan.summary}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
+                  <div>
+                    <div className="eyebrow" style={{ marginBottom: 6 }}>{scan.area} · scanned {scan.at}</div>
+                    <div style={{ fontSize: 14.5, lineHeight: 1.6 }}>{scan.summary}</div>
+                  </div>
+                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--green)", whiteSpace: "nowrap" }}><Save size={11} style={{ verticalAlign: -1 }} /> Saved</span>
+                </div>
               </div>
               {(scan.trends || []).map((t, i) => (
                 <div className="card" key={i} style={{ marginBottom: 14 }}>
@@ -1841,7 +1870,7 @@ Return exactly 5 trends, ranked most important first.`;
                   </div>
                 </div>
               ))}
-              <div className="hint">AI-generated from live web results — verify specifics before committing resources. Added adjustments appear on the Roadmap under "Trend response".</div>
+              <div className="hint">AI-generated from live web results — verify specifics before committing resources. Added adjustments appear on the Roadmap under "Trend response". This scan is saved automatically and stays available next time you log in.</div>
             </>
           )}
         </>
