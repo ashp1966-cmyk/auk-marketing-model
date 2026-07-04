@@ -6,7 +6,7 @@ import {
 import {
   Anchor, Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- theme */
@@ -183,6 +183,114 @@ const PROSPECTS = [
 ];
 
 const CLIENT_EXPECT = "What clients expect: expert, tailored advice & strategy; quality delivered on time, on budget and to scope; clear communication on progress; problems solved as they arise; immersive AI/ML-enabled experiences; personalisation; and strong data protection & ethics.";
+
+/* ---- Business Plan & Strategy data — from AUK strategy workbook (2025) ---- */
+const VISION = "Africa's Leading Digital & Green Training, Maritime, Mining, Metallurgy & Logistics Solutions Partner";
+
+const GOALS5_SEED = {
+  1: { turnover: 15000000, profit: 2250000, clients: 25 },
+  2: { turnover: 25000000, profit: 3750000, clients: 5 },
+  3: { turnover: 7500000,  profit: 1125000, clients: 8 },
+  4: { turnover: 7500000,  profit: 1125000, clients: 7 },
+  5: { turnover: 25000000, profit: 3750000, clients: 5 },
+  6: { turnover: 15000000, profit: 2250000, clients: 15 },
+};
+
+const SWOT = {
+  strengths: [
+    "Multi-sector experience: maritime, mining, logistics, consulting, training, automation, smelter development",
+    "Strong Africa–Middle East footprint with India–Africa–China trade exposure",
+    "Established credibility in ship inspections, audits, ESG compliance and port optimisation",
+    "Training academy with potential for scalable digital delivery",
+    "35 years of experience in port, shipping and logistics; well-networked locally",
+    "BEE Level 4 local company with a sound balance sheet; DoT accreditation",
+    "Board strength: Harbour Master & Harbour Pilot experience (Richards Bay)",
+    "Own research team, consulting division and shipping & logistics operations",
+  ],
+  constraints: [
+    "Automation margins near zero — commoditised market",
+    "Smelting suspended — low alloy prices, investor hesitation",
+    "Trading paused — losses from volatility and thin spreads",
+    "Capital constraints — need low-capex, high-margin pivots",
+  ],
+  opportunities: [
+    "Global decarbonisation & ESG compliance in maritime (CII, EEXI, EU ETS)",
+    "Digital transformation in ports, logistics and mining",
+    "AI-driven predictive maintenance, remote inspections and digital twins",
+    "Africa's growing need for skills development and compliance training",
+    "Reshoring of mineral processing and critical-minerals demand",
+    "Corridor optimisation across Africa (North–South, Maputo, Walvis Bay)",
+  ],
+};
+
+const PILLARS = [
+  { title: "High-Margin Maritime Services", tag: "Core strength", clr: "var(--brass)",
+    items: ["Digital ship inspections & remote audits — drones, ROVs, AI defect detection; subscription inspection packages",
+      "ESG & emissions compliance — CII/EEXI advisory, carbon footprint reporting, EU ETS support, green-port consulting",
+      "Port optimisation & digitalisation — IoT berth management, turnaround optimisation, digital twins for ports"] },
+  { title: "Mining Consulting & Digital Transformation", tag: "Asset-light pivot", clr: "var(--teal)",
+    items: ["Critical minerals consulting — feasibility studies, mineral audits, ESG compliance, investor-readiness",
+      "Digital mine solutions — IoT sensors, predictive maintenance, remote monitoring, digital twins",
+      "Smelter development advisory — design, feasibility & project development without capex exposure; partner with EPC firms"] },
+  { title: "Training & Skills Development", tag: "The scalable goldmine", clr: "var(--green)",
+    items: ["Pan-African digital skills platform — maritime & logistics, mining & industrial, corporate leadership tracks",
+      "ESG, digital port operations, remote inspection, safety & regulatory, AI literacy for executives",
+      "Hybrid delivery: online + virtual + onsite; subscriptions, corporate contracts, micro-credentials"] },
+  { title: "AI, Digitalisation & Automation", tag: "Reinvented as integrator", clr: "#b98acb",
+    items: ["AI-driven solutions — predictive maintenance, cargo visibility, corridor risk analytics, compliance monitoring",
+      "Digital twins for ports, mines, smelters and logistics hubs — offered as subscriptions",
+      "IoT & remote monitoring; custom AI tools — document automation, incident prediction, training simulators"] },
+];
+
+const FOCUS_AVOID = {
+  focus: ["Consulting", "Training", "Digital services", "Remote inspections", "ESG compliance", "IoT & AI solutions"],
+  avoid: ["Trading (high risk, low margin)", "Smelting (capital intensive, price-sensitive)", "Commodity automation (low margin)"],
+};
+
+const BIZ_MODELS = {
+  1: { model: "OUTSOURCED network", csf: "Track record + marketing; accreditation for freight forwarding", prospects: "High",
+       action: "Aggressive marketing; brand on AI and last-mile delivery; participate across the value chain through collaboration" },
+  2: { model: "INTERNAL + CONTRACT", csf: "Marketing + track record + competitive cost", prospects: "High",
+       action: "Expand geographically; related diversification (H&M, claims); commence cargo & landside inspections — volume based" },
+  3: { model: "INTERNAL + CONTRACT", csf: "Consulting track record, capacity, marketing", prospects: "High",
+       action: "Build global skillset; integrate AI; focus on value delivery; more tenders with outsourced expert capacity" },
+  4: { model: "INTERNAL + CONTRACT", csf: "Consulting track record, capacity, marketing, research", prospects: "High",
+       action: "More tenders and marketing; develop expert capacity; business plans & market research as entry products" },
+  5: { model: "INTERNAL + CONTRACT", csf: "Marketing + track record + cost; DoT/insurer relationships", prospects: "High",
+       action: "Priority line — expand claims & loss adjusting alongside surveys; build insurer & P&I relationships" },
+  6: { model: "INTERNAL + CONTRACT", csf: "Marketing, capacity, domain expertise, accreditation, practical brand", prospects: "High",
+       action: "Digital & AI integration; subscription-based learning; start flagship courses — BP ready; expand overseas" },
+};
+
+const ANSOFF = [
+  { cell: "Current market × Current services", code: "1A", steps: "Add features (remote & technical support) · price discrimination & credit · differentiated branding · out-deliver competitors · CRM & networking with current stakeholders" },
+  { cell: "New market × Current services", code: "1B", steps: "New geographies · global marketing · align services to international requirements" },
+  { cell: "Current market × New services", code: "2A", steps: "Aggressive awareness marketing for newly launched services" },
+  { cell: "New market × New services", code: "2B", steps: "Enter only with a partner or proven demand — highest risk quadrant" },
+];
+
+const COMPETITORS = [
+  ["Kuehne + Nagel", "No. 1 ocean freight forwarder in the world"],
+  ["DAMCO (Maersk)", "AP Moller division; 10th largest globally"],
+  ["Agility", "Offices in 100 countries; complex assignments in challenging conditions"],
+  ["DSV Panalpina", "Very big and vast network"],
+  ["JM Baxi", "100 years of establishment (India)"],
+  ["Jeena & Company", "Bonded terminals; own state-of-the-art ERP"],
+  ["LCL Logistics", "Own CFS and warehouses"],
+];
+
+const ROADMAP_SEED = [
+  { id: 1,  phase: "90-Day",  item: "Rebrand & reposition — update website messaging", status: "Done" },
+  { id: 2,  phase: "90-Day",  item: "Launch new service pages", status: "Pending" },
+  { id: 3,  phase: "90-Day",  item: "Publish a strategic whitepaper", status: "Pending" },
+  { id: 4,  phase: "90-Day",  item: "Digital training platform — start with 10 flagship courses + corporate packages", status: "Pending" },
+  { id: 5,  phase: "90-Day",  item: "Digital inspection pilot — drones + AI defect detection; discounted pilot to 3 clients", status: "Pending" },
+  { id: 6,  phase: "90-Day",  item: "Create ESG compliance service line — templates, tools, dashboards", status: "Pending" },
+  { id: 7,  phase: "90-Day",  item: "Develop partnerships — IoT vendors, drone companies, universities, port authorities", status: "Pending" },
+  { id: 8,  phase: "Phase 1 (0–6 mo)",   item: "Implement CRM; build digital training platform; AI-assisted inspection templates; digitise SOPs", status: "In progress" },
+  { id: 9,  phase: "Phase 2 (6–18 mo)",  item: "Launch digital inspection platform; IoT pilots; digital twin prototypes; AI analytics dashboards", status: "Pending" },
+  { id: 10, phase: "Phase 3 (18–36 mo)", item: "Subscription digital services; training academy across Africa; tech partnerships; AUK AI Lab", status: "Pending" },
+];
 
 /* Product/service portfolio — from AUK's course catalogue and consulting service map */
 const PORTFOLIO = {
@@ -399,6 +507,8 @@ export default function App() {
   const [saveMsg, setSaveMsg] = useState("");
   const _saved = loadSaved();
   const [portfolioItems, setPortfolioItems] = useState(() => initPortfolioItems(_saved.portfolioItems));
+  const [goals5, setGoals5] = useState(() => _saved.goals5 || GOALS5_SEED);
+  const [roadmap, setRoadmap] = useState(() => _saved.roadmap || ROADMAP_SEED);
   const [svcs, setSvcs] = useState(() => _saved.svcs || SEED);
   const [budget, setBudget] = useState(() => _saved.budget || {
     salesMgr: 1, salesMgrPay: 780000,
@@ -441,25 +551,25 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        const data = { svcs, budget, actuals, misIndirect, portfolioItems, savedAt: new Date().toISOString() };
+        const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, savedAt: new Date().toISOString() };
         localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       } catch (e) {}
     }, 1200); // 1.2s debounce
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, portfolioItems]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap]);
 
   const saveNow = useCallback(() => {
     try {
-      const data = { svcs, budget, actuals, misIndirect, portfolioItems, savedAt: new Date().toISOString() };
+      const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, savedAt: new Date().toISOString() };
       localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
       setSaveMsg("Saved ✓");
       setTimeout(() => setSaveMsg(""), 2500);
     } catch (e) { setSaveMsg("Save failed"); }
-  }, [svcs, budget, actuals, misIndirect, portfolioItems]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap]);
 
   const downloadBackup = useCallback(() => {
-    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, savedAt: new Date().toISOString() });
-  }, [svcs, budget, actuals, misIndirect, portfolioItems]);
+    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, savedAt: new Date().toISOString() });
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap]);
 
   const funnelCalc = useMemo(() => {
     const rows = calc.rows.map((r) => {
@@ -498,6 +608,7 @@ export default function App() {
     ["play", "Playbook", Map],
     ["crm", "Feedback & CRM", Radar],
     ["mis", "MIS · Activity", BarChart2],
+    ["plan", "Business Plan", Target],
   ];
 
   if (!authed) return <Login onOk={() => setAuthed(true)} />;
@@ -547,6 +658,7 @@ export default function App() {
         {tab === "play" && <Playbook />}
         {tab === "crm" && <CRM />}
         {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} />}
+        {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} />}
       </div>
     </div>
   );
@@ -1319,6 +1431,213 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
   );
 }
 
+
+
+/* ---------------------------------------------------------------- business plan & strategy */
+const RM_STATUS = ["Pending", "In progress", "Done"];
+const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
+
+function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap }) {
+  const [view, setView] = useState("goals");
+  const setG = (id, k, v) => setGoals5((prev) => ({ ...prev, [id]: { ...prev[id], [k]: parseFloat(v) || 0 } }));
+  const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+
+  const totT = svcs.reduce((a, s) => a + (goals5[s.id]?.turnover || 0), 0);
+  const totP = svcs.reduce((a, s) => a + (goals5[s.id]?.profit || 0), 0);
+  const totC = svcs.reduce((a, s) => a + (goals5[s.id]?.clients || 0), 0);
+  const done = roadmap.filter((r) => r.status === "Done").length;
+
+  return (
+    <>
+      <div className="sechead">
+        <div><div className="eyebrow">Strategy blueprint 2025–2035</div><h2>Business plan</h2></div>
+        <div className="sub">Where AUK stands, where it's going, and how it gets there — excluding the marketing engine, which lives in the rest of this app.</div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16, borderColor: "var(--brass)", background: "linear-gradient(135deg, var(--navy-800), var(--navy-700))" }}>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>Positioning</div>
+        <div className="disp" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.3 }}>{VISION}</div>
+        <div className="hint" style={{ marginTop: 8 }}>A roadmap for resilience, reinvention and exponential growth — low capex, high margin, digital-first.</div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {[["goals","5-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["road","Roadmap"]].map(([v,l]) => (
+          <button key={v} className={"navb" + (view === v ? " on" : "")} onClick={() => setView(v)} style={{ fontSize: 13, padding: "8px 12px" }}>{l}</button>
+        ))}
+      </div>
+
+      {view === "goals" && (
+        <>
+          <div className="grid g3" style={{ marginBottom: 16 }}>
+            <Kpi label="5-year turnover goal" val={Rk(totT)} foot="All six services" fill={0.8} accent="var(--brass)" />
+            <Kpi label="5-year profit goal" val={Rk(totP)} foot={pct(totT ? totP / totT : 0) + " blended"} fill={0.6} accent="var(--green)" />
+            <Kpi label="Client base goal" val={totC + " clients"} foot="Active client relationships" fill={0.6} accent="var(--teal)" />
+          </div>
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Service line</th><th>Turnover (R)</th><th>Profit (R)</th><th>Profit %</th><th>Clients</th></tr></thead>
+              <tbody>
+                {svcs.map((s) => {
+                  const g = goals5[s.id] || { turnover: 0, profit: 0, clients: 0 };
+                  return (
+                    <tr key={s.id}>
+                      <td className="svc">{s.name}</td>
+                      <td><input className="cellinp" style={{ width: 110 }} value={g.turnover} onChange={(e) => setG(s.id, "turnover", e.target.value)} /></td>
+                      <td><input className="cellinp" style={{ width: 100 }} value={g.profit} onChange={(e) => setG(s.id, "profit", e.target.value)} /></td>
+                      <td className="mono" style={{ color: "var(--teal)" }}>{g.turnover ? ((g.profit / g.turnover) * 100).toFixed(0) + "%" : "—"}</td>
+                      <td><input className="cellinp" style={{ width: 60 }} value={g.clients} onChange={(e) => setG(s.id, "clients", e.target.value)} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot><tr><td>Total</td><td className="mono">{Rk(totT)}</td><td className="mono">{Rk(totP)}</td><td className="mono">{totT ? ((totP/totT)*100).toFixed(0) + "%" : ""}</td><td className="mono">{totC}</td></tr></tfoot>
+            </table>
+            <div className="hint" style={{ marginTop: 10 }}>All targets editable — they auto-save. Year 1–3 stepping stones toward these live on the Inputs tab as order targets.</div>
+          </div>
+          <div className="note" style={{ marginTop: 16 }}>
+            <b>Beyond the numbers, the 5-year scorecard also tracks:</b> client satisfaction (quality = 100%, delays = 0, errors = 0, pricing below comparable competitors) and 4IR readiness (value optimisation, platform presence, digital provision, technology infusion, value to society &amp; environment — each targeted at 95–100%).
+          </div>
+        </>
+      )}
+
+      {view === "swot" && (
+        <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
+          <div className="card">
+            <div className="eyebrow" style={{ marginBottom: 12, color: "var(--green)" }}><Shield size={13} style={{ verticalAlign: -2 }} /> Strengths</div>
+            {SWOT.strengths.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0", borderBottom: i < SWOT.strengths.length - 1 ? "1px solid var(--navy-700)" : "none" }}>{x}</div>)}
+          </div>
+          <div className="grid g2">
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 12, color: "var(--red)" }}>Current constraints</div>
+              {SWOT.constraints.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
+            </div>
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 12, color: "var(--brass)" }}>Opportunity landscape</div>
+              {SWOT.opportunities.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === "pivot" && (
+        <>
+          <div className="grid g2">
+            {PILLARS.map((pl, i) => (
+              <div className="card" key={i} style={{ borderTop: `3px solid ${pl.clr}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <div className="disp mono" style={{ width: 32, height: 32, borderRadius: "50%", border: `1.5px solid ${pl.clr}`, color: pl.clr, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{i + 1}</div>
+                  <div>
+                    <div className="disp" style={{ fontSize: 18, fontWeight: 700 }}>{pl.title}</div>
+                    <span className="tag" style={{ color: pl.clr, borderColor: pl.clr }}>{pl.tag}</span>
+                  </div>
+                </div>
+                {pl.items.map((x, j) => <div key={j} style={{ fontSize: 13, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
+              </div>
+            ))}
+          </div>
+          <div className="grid g2" style={{ marginTop: 16 }}>
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 10, color: "var(--green)" }}>Focus · low capex, high margin</div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                {FOCUS_AVOID.focus.map((f) => <span key={f} className="pill" style={{ background: "rgba(70,185,138,.12)", color: "var(--green)" }}>{f}</span>)}
+              </div>
+            </div>
+            <div className="card">
+              <div className="eyebrow" style={{ marginBottom: 10, color: "var(--red)" }}>Avoid / minimise</div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                {FOCUS_AVOID.avoid.map((f) => <span key={f} className="pill" style={{ background: "rgba(217,123,123,.12)", color: "var(--red)" }}>{f}</span>)}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {view === "models" && (
+        <>
+          <div className="card" style={{ overflowX: "auto", marginBottom: 16 }}>
+            <table className="tbl">
+              <thead><tr><th>Service line</th><th style={{ textAlign: "left" }}>Delivery model</th><th style={{ textAlign: "left" }}>Critical success factors</th><th>Prospects</th><th style={{ textAlign: "left", minWidth: 260 }}>Action plan</th></tr></thead>
+              <tbody>
+                {svcs.map((s) => {
+                  const m = BIZ_MODELS[s.id] || {};
+                  return (
+                    <tr key={s.id}>
+                      <td className="svc" style={{ whiteSpace: "normal" }}>{s.name}</td>
+                      <td style={{ textAlign: "left" }}><span className="tag">{m.model}</span></td>
+                      <td style={{ textAlign: "left", color: "var(--slate)", whiteSpace: "normal", fontSize: 13 }}>{m.csf}</td>
+                      <td><span className="pill" style={{ background: "rgba(70,185,138,.12)", color: "var(--green)" }}>{m.prospects}</span></td>
+                      <td style={{ textAlign: "left", color: "var(--slate)", whiteSpace: "normal", fontSize: 13 }}>{m.action}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="divh"><h3>Growth strategy grid (Ansoff)</h3><div className="ln" /></div>
+          <div className="grid g2">
+            {ANSOFF.map((a) => (
+              <div className="card" key={a.code}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>{a.code}</span>
+                  <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>{a.cell}</div>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--slate)" }}>{a.steps}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {view === "comp" && (
+        <>
+          <div className="note" style={{ marginBottom: 16 }}>
+            <b>AUK's competitive edge:</b> chartered ship-broker networks and vessel-owner access; own LCL/FF business contacts across India–Africa; cargo-owner networks; BEE Level 4 local advantage; mine ownership and own cargo support; 35 years across port, shipping and logistics; agreements with other service providers; own research and consulting divisions.
+          </div>
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Major competitor (logistics/FF)</th><th style={{ textAlign: "left" }}>Their advantage</th></tr></thead>
+              <tbody>
+                {COMPETITORS.map(([n, a]) => (
+                  <tr key={n}><td className="svc">{n}</td><td style={{ textAlign: "left", color: "var(--slate)" }}>{a}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="hint" style={{ marginTop: 10 }}>AUK does not out-scale these players — it out-specialises them: niche maritime expertise, local accreditation, agility and relationships they cannot replicate at their size.</div>
+          </div>
+        </>
+      )}
+
+      {view === "road" && (
+        <>
+          <div className="grid g3" style={{ marginBottom: 16 }}>
+            <Kpi label="Actions complete" val={`${done} / ${roadmap.length}`} foot="Across 90-day plan + 3 phases" fill={roadmap.length ? done / roadmap.length : 0} accent="var(--green)" />
+            <Kpi label="In progress" val={roadmap.filter((r) => r.status === "In progress").length} foot="Active right now" fill={0.4} accent="var(--amber)" />
+            <Kpi label="Pending" val={roadmap.filter((r) => r.status === "Pending").length} foot="Not yet started" fill={0.4} />
+          </div>
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Phase</th><th style={{ textAlign: "left", minWidth: 320 }}>Action</th><th>Status</th></tr></thead>
+              <tbody>
+                {roadmap.map((r) => (
+                  <tr key={r.id}>
+                    <td className="svc" style={{ whiteSpace: "nowrap" }}>{r.phase}</td>
+                    <td style={{ textAlign: "left", color: "var(--slate)", whiteSpace: "normal", fontSize: 13 }}>{r.item}</td>
+                    <td style={{ textAlign: "left" }}>
+                      <select className="sel" style={{ padding: "5px 8px", fontSize: 12.5, color: RM_CLR[r.status], fontWeight: 600 }} value={r.status} onChange={(e) => setRm(r.id, e.target.value)}>
+                        {RM_STATUS.map((st) => <option key={st} value={st} style={{ color: "var(--ink)" }}>{st}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="hint" style={{ marginTop: 10 }}>Update statuses as work completes — they save automatically.</div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 /* ---------------------------------------------------------------- playbook */
 const PLAYBOOK = [
