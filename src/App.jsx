@@ -157,7 +157,7 @@ const SEED = [
       aw: 0.025, it: 0.05, cl: 0.15, cpm: 90, cpc: 8, touches: 2, cpt: 150,
       segments: ["IMO / DoT courses", "Skills programmes", "Corporate & in-house training"] } },
 ];
-const CHANNELS = ["LinkedIn", "Meta", "Google", "Email", "Referral"];
+const CHANNELS = ["LinkedIn", "Meta", "Google", "Email", "Referral", "Sales (Direct Call)", "Events & Exhibitions"];
 
 /* MIS constants — from AUK's own MIS (average gross profit per unit per service) */
 const MIS_MONTHS = ["Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun"];
@@ -547,11 +547,13 @@ export default function App() {
   const [ideas, setIdeas] = useState(() => _saved.ideas || IDEAS_SEED);
   const [scans, setScans] = useState(() => _saved.scans || []);
   const [svcs, setSvcs] = useState(() => _saved.svcs || SEED);
-  const [budget, setBudget] = useState(() => _saved.budget || {
+  const [budget, setBudget] = useState(() => ({
     salesMgr: 1, salesMgrPay: 780000,
     campMgr: 2, campMgrPay: 540000,
     socialAds: 1300000, otherPromo: 900000,
-  });
+    salesCallBudget: 180000, eventsBudget: 350000,
+    ..._saved.budget,
+  }));
   // MIS actuals state: svcId -> 12 monthly actual unit values
   const [actuals, setActuals] = useState(() =>
     _saved.actuals || Object.fromEntries(SEED.map((s) => [s.id, Array(12).fill(0)]))
@@ -582,7 +584,8 @@ export default function App() {
   const mktCost =
     budget.salesMgr * budget.salesMgrPay +
     budget.campMgr * budget.campMgrPay +
-    budget.socialAds + budget.otherPromo;
+    budget.socialAds + budget.otherPromo +
+    (budget.salesCallBudget || 0) + (budget.eventsBudget || 0);
 
   // Auto-save to localStorage whenever key data changes
   useEffect(() => {
@@ -1093,7 +1096,7 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
   const fr = fc.rows.find((x) => x.id === s.id) || fc.rows[0];
   const d = fr.fyrs[yr];
   const t = fc.totals[yr];
-  const budgeted = budget.socialAds + budget.otherPromo;
+  const budgeted = budget.socialAds + budget.otherPromo + (budget.salesCallBudget || 0) + (budget.eventsBudget || 0);
   const gap = budgeted - t.total;
   const gpPerCust = s.price * (1 - s.cost);
   const pays = d.cpa <= gpPerCust;
@@ -1106,7 +1109,19 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
     ["Interest \u2192 Decision", "it", "% of engaged that become leads"],
     ["Decision \u2192 Close", "cl", "% of leads that become customers"],
   ];
-  const costFields = [
+  const isSales = s.mkt.channel === "Sales (Direct Call)";
+  const isEvents = s.mkt.channel === "Events & Exhibitions";
+  const costFields = isSales ? [
+    ["Cost per 1,000 dials", "cpm", "Dialler / call-list cost (often ~0)"],
+    ["Follow-up cost per engaged", "cpc", "Email/WhatsApp follow-up after a call"],
+    ["Sales touches per lead", "touches", "Calls + visits to close"],
+    ["Cost per sales call/visit", "cpt", "Rep time + travel + phone"],
+  ] : isEvents ? [
+    ["Cost per 1,000 visitors reached", "cpm", "Stand/booth cost ÷ footfall at the event"],
+    ["Lead-capture cost per engaged", "cpc", "Giveaways, badge scans, collateral"],
+    ["Sales touches per lead", "touches", "Post-event follow-up calls/visits"],
+    ["Cost per follow-up touch", "cpt", "Blended follow-up call/visit cost"],
+  ] : [
     ["Cost per 1,000 impressions", "cpm", "Channel CPM"],
     ["Nurture cost per engaged", "cpc", "Retargeting + content"],
     ["Sales touches per lead", "touches", "Calls + visits to close"],
@@ -1298,6 +1313,10 @@ function Resources({ budget, setBudget, calc, mktCost, fc }) {
           <div className="grid g2">
             <div className="field"><label>Social / paid ads budget (R/yr)</label><input className="inp num" value={budget.socialAds} onChange={(e) => set("socialAds", e.target.value)} /></div>
             <div className="field"><label>Other promotion (R/yr)</label><input className="inp num" value={budget.otherPromo} onChange={(e) => set("otherPromo", e.target.value)} /></div>
+          </div>
+          <div className="grid g2" style={{ marginTop: 12 }}>
+            <div className="field"><label>Sales (direct call) budget (R/yr)</label><input className="inp num" value={budget.salesCallBudget} onChange={(e) => set("salesCallBudget", e.target.value)} /><span className="hint" style={{ fontSize: 10.5 }}>Phone/mobile plans, dialler tools, travel for visits</span></div>
+            <div className="field"><label>Events &amp; exhibitions budget (R/yr)</label><input className="inp num" value={budget.eventsBudget} onChange={(e) => set("eventsBudget", e.target.value)} /><span className="hint" style={{ fontSize: 10.5 }}>Stand/booth, travel, collateral, sponsorships</span></div>
           </div>
         </div>
 
