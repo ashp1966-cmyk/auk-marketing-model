@@ -993,7 +993,7 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
             </div>
           </div>
 
-          {p.segsCust && (
+          {p?.segsCust && (
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="eyebrow" style={{ marginBottom: 10 }}>Freight-forwarding segments</div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
@@ -1056,7 +1056,7 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
             </div>
           ))}
 
-          {p.landingPrice && (
+          {p?.landingPrice && (
             <>
               <div className="divh"><h3>Landing-price calculator</h3><div className="ln" /></div>
               <div className="card">
