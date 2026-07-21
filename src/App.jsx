@@ -138,27 +138,27 @@ const BARCLR = ["#3D9BC4", "#2BAABF", "#8EC5DC", "#6f9bd1", "#46b98a", "#b98acb"
    Per-service funnel economics reflect real channels: LinkedIn for global ship managers (higher CPM/CPC),
    Meta/Google for mass SA training (cheaper). Rates from 2025/26 B2B benchmarks. Prices = calibrate w/ AUK actuals. */
 const SEED = [
-  { id: 1, name: "Logistics", market: 4000, price: 40000, cost: 0.72, orders: [60, 120, 200],
+  { id: 1, name: "Logistics", market: 4000, price: 40000, cost: 0.72, orders: [60, 120, 200], active: true,
     mkt: { audience: "Exporters, importers, freight forwarders & traders", channel: "LinkedIn", geo: "SA + cross-border",
       aw: 0.020, it: 0.05, cl: 0.12, cpm: 150, cpc: 15, touches: 4, cpt: 250,
       segments: ["Container & Air · Breakbulk · Bulk (Export/Import)", "Modes: Road · Rail · Water · Air", "Transportation · Warehousing · Value-added"] } },
-  { id: 2, name: "Ship inspection services", market: 4000, price: 55000, cost: 0.45, orders: [80, 160, 240],
+  { id: 2, name: "Ship inspection services", market: 4000, price: 55000, cost: 0.45, orders: [80, 160, 240], active: true,
     mkt: { audience: "Ship managers & technical superintendents", channel: "LinkedIn", geo: "Global",
       aw: 0.012, it: 0.08, cl: 0.12, cpm: 800, cpc: 40, touches: 4, cpt: 350,
       segments: ["Condition & pre-purchase surveys", "Bunker & draft surveys", "Class / flag-related", "P&I condition surveys"] } },
-  { id: 3, name: "Maritime consulting services", market: 250, price: 220000, cost: 0.40, orders: [10, 18, 28],
+  { id: 3, name: "Maritime consulting services", market: 250, price: 220000, cost: 0.40, orders: [10, 18, 28], active: true,
     mkt: { audience: "Ship owners, operators & port authorities", channel: "LinkedIn", geo: "Regional / global",
       aw: 0.012, it: 0.07, cl: 0.15, cpm: 700, cpc: 40, touches: 5, cpt: 400,
       segments: ["Ports & shipping strategy", "Operations & efficiency", "Regulatory / compliance"] } },
-  { id: 4, name: "Business consulting (SA)", market: 600, price: 140000, cost: 0.42, orders: [12, 24, 36],
+  { id: 4, name: "Business consulting (SA)", market: 600, price: 140000, cost: 0.42, orders: [12, 24, 36], active: true,
     mkt: { audience: "SA corporates & SMMEs (BEE)", channel: "LinkedIn", geo: "South Africa",
       aw: 0.020, it: 0.06, cl: 0.12, cpm: 250, cpc: 25, touches: 4, cpt: 300,
       segments: ["Strategy & growth", "BEE & transformation", "Industry-specific advisory"] } },
-  { id: 5, name: "Cargo inspection & loss adjusting", market: 3500, price: 48000, cost: 0.48, orders: [105, 175, 280],
+  { id: 5, name: "Cargo inspection & loss adjusting", market: 3500, price: 48000, cost: 0.48, orders: [105, 175, 280], active: true,
     mkt: { audience: "Insurers, cargo owners, traders & P&I clubs", channel: "LinkedIn", geo: "SA + regional",
       aw: 0.018, it: 0.06, cl: 0.14, cpm: 400, cpc: 30, touches: 3, cpt: 300,
       segments: ["Draft & quantity surveys", "Sampling & quality", "Loss & claims adjustment"] } },
-  { id: 6, name: "Training & skills development", market: 2500, price: 14000, cost: 0.38, orders: [100, 175, 250],
+  { id: 6, name: "Training & skills development", market: 2500, price: 14000, cost: 0.38, orders: [100, 175, 250], active: true,
     mkt: { audience: "Seafarers, SMMEs, entrepreneurs & employers", channel: "Meta", geo: "South Africa",
       aw: 0.025, it: 0.05, cl: 0.15, cpm: 90, cpc: 8, touches: 2, cpt: 150,
       segments: ["IMO / DoT courses", "Skills programmes", "Corporate & in-house training"] } },
@@ -566,6 +566,28 @@ export default function App() {
   );
   const [misIndirect, setMisIndirect] = useState(() => _saved.misIndirect || { hr: 24000, other: 62500 });
 
+  // ---- Service lifecycle: add / suspend-reactivate / delete ----
+  const addService = useCallback(() => {
+    const nextId = svcs.length ? Math.max(...svcs.map((s) => s.id)) + 1 : 1;
+    const newSvc = {
+      id: nextId, name: "New Service", market: 1000, price: 50000, cost: 0.5,
+      orders: [0, 0, 0], active: true,
+      mkt: { audience: "", channel: "LinkedIn", geo: "South Africa",
+        aw: 0.02, it: 0.06, cl: 0.12, cpm: 200, cpc: 20, touches: 3, cpt: 250, segments: [] },
+    };
+    setSvcs((prev) => [...prev, newSvc]);
+    setActuals((prev) => ({ ...prev, [nextId]: Array(12).fill(0) }));
+  }, [svcs]);
+
+  const toggleServiceActive = useCallback((id) => {
+    setSvcs((prev) => prev.map((s) => (s.id === id ? { ...s, active: s.active === false ? true : false } : s)));
+  }, []);
+
+  const deleteService = useCallback((id) => {
+    setSvcs((prev) => prev.filter((s) => s.id !== id));
+    setActuals((prev) => { const next = { ...prev }; delete next[id]; return next; });
+  }, []);
+
   const calc = useMemo(() => {
     const rows = svcs.map((s) => {
       const yrs = s.orders.map((ord) => {
@@ -579,9 +601,10 @@ export default function App() {
       return { ...s, yrs };
     });
     const totals = YEARS.map((_, i) => {
-      const turnover = rows.reduce((a, r) => a + r.yrs[i].turnover, 0);
-      const gp = rows.reduce((a, r) => a + r.yrs[i].gp, 0);
-      const cust = rows.reduce((a, r) => a + r.yrs[i].customers, 0);
+      const activeRows = rows.filter((r) => r.active !== false);
+      const turnover = activeRows.reduce((a, r) => a + r.yrs[i].turnover, 0);
+      const gp = activeRows.reduce((a, r) => a + r.yrs[i].gp, 0);
+      const cust = activeRows.reduce((a, r) => a + r.yrs[i].customers, 0);
       return { turnover, gp, cust, margin: turnover ? gp / turnover : 0 };
     });
     return { rows, totals };
@@ -634,7 +657,8 @@ export default function App() {
       return { ...r, fyrs };
     });
     const totals = YEARS.map((_, i) => {
-      const sum = (k) => rows.reduce((a, r) => a + r.fyrs[i][k], 0);
+      const activeRows = rows.filter((r) => r.active !== false);
+      const sum = (k) => activeRows.reduce((a, r) => a + r.fyrs[i][k], 0);
       const customers = sum("customers"), total = sum("total");
       return { customers, leads: sum("leads"), engaged: sum("engaged"), reach: sum("reach"),
         cAware: sum("cAware"), cInterest: sum("cInterest"), cDecision: sum("cDecision"),
@@ -695,14 +719,14 @@ export default function App() {
 
       <div className="wrap">
         {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
-        {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} />}
+        {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} onAddService={addService} onToggleActive={toggleServiceActive} onDeleteService={deleteService} />}
         {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
         {tab === "rev" && <Revenue calc={calc} />}
         {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
         {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} />}
         {tab === "camp" && <Campaign svcs={svcs} />}
         {tab === "play" && <Playbook />}
-        {tab === "crm" && <CRM />}
+        {tab === "crm" && <CRM svcs={svcs} />}
         {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} />}
         {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
       </div>
@@ -714,12 +738,13 @@ export default function App() {
 function Dashboard({ calc, mktCost }) {
   const y3 = calc.totals[2];
   const roi = mktCost ? (y3.gp - mktCost) / mktCost : 0;
+  const activeRows = calc.rows.filter((r) => r.active !== false);
   const revData = YEARS.map((y, i) => {
     const row = { year: y };
-    calc.rows.forEach((r) => (row[r.name] = Math.round(r.yrs[i].turnover)));
+    activeRows.forEach((r) => (row[r.name] = Math.round(r.yrs[i].turnover)));
     return row;
   });
-  const marginData = calc.rows.map((r) => ({ name: r.name, margin: +(r.yrs[2].margin * 100).toFixed(1) }));
+  const marginData = activeRows.map((r) => ({ name: r.name, margin: +(r.yrs[2].margin * 100).toFixed(1) }));
 
   return (
     <>
@@ -747,8 +772,8 @@ function Dashboard({ calc, mktCost }) {
             <YAxis stroke="#8ba3bd" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
             <Tooltip contentStyle={ttStyle} formatter={(v) => R(v)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            {calc.rows.map((r, i) => (
-              <Bar key={r.id} dataKey={r.name} stackId="a" fill={BARCLR[i % BARCLR.length]} radius={i === calc.rows.length - 1 ? [4, 4, 0, 0] : 0} />
+            {activeRows.map((r, i) => (
+              <Bar key={r.id} dataKey={r.name} stackId="a" fill={BARCLR[i % BARCLR.length]} radius={i === activeRows.length - 1 ? [4, 4, 0, 0] : 0} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -799,7 +824,7 @@ function Kpi({ label, val, foot, fill = 0.5, accent }) {
 }
 
 /* ---------------------------------------------------------------- inputs */
-function Inputs({ svcs, setSvcs }) {
+function Inputs({ svcs, setSvcs, onAddService, onToggleActive, onDeleteService }) {
   const upd = (id, key, val, idx) => {
     setSvcs((prev) =>
       prev.map((s) => {
@@ -810,6 +835,13 @@ function Inputs({ svcs, setSvcs }) {
     );
   };
   const num = (v) => (isNaN(parseFloat(v)) ? 0 : parseFloat(v));
+  const activeCount = svcs.filter((s) => s.active !== false).length;
+
+  const confirmDelete = (s) => {
+    if (window.confirm(`Delete "${s.name}"? This removes its portfolio detail and activity history permanently. This cannot be undone.`)) {
+      onDeleteService(s.id);
+    }
+  };
 
   return (
     <>
@@ -819,39 +851,63 @@ function Inputs({ svcs, setSvcs }) {
       </div>
 
       <div className="note" style={{ marginBottom: 16 }}>
-        <b>How each line works:</b> you set the <b style={{ color: "var(--brass)" }}>order targets</b> — the number of orders/jobs/seats to win each year. Market share is then <b>calculated automatically</b> (orders ÷ addressable market). Those orders are what the campaigns and promotions must deliver — see the Funnel Plan. Orders × avg price = turnover; delivery cost % sets the margin. Order targets can also be set per service on the Portfolio tab.
+        <b>How each line works:</b> you set the <b style={{ color: "var(--brass)" }}>order targets</b> — the number of orders/jobs/seats to win each year. Market share is then <b>calculated automatically</b> (orders ÷ addressable market). Those orders are what the campaigns and promotions must deliver — see the Funnel Plan. Orders × avg price = turnover; delivery cost % sets the margin. Order targets can also be set per service on the Portfolio tab. <b style={{ color: "var(--teal)" }}>Suspend</b> a service to remove it from every total (Dashboard, Revenue, Funnel, Capacity) while keeping its data — reactivate any time.
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead>
             <tr>
+              <th>Status</th>
               <th>Service line</th>
               <th>Addressable market /yr</th>
               <th>Avg price (R)</th>
               <th>Delivery cost %</th>
               <th>Orders Y1</th><th>Orders Y2</th><th>Orders Y3</th>
               <th>Share Y1</th><th>Share Y2</th><th>Share Y3</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {svcs.map((s) => (
-              <tr key={s.id}>
-                <td><input className="cellinp" style={{ width: 210, textAlign: "left" }} value={s.name} onChange={(e) => upd(s.id, "name", e.target.value)} /></td>
-                <td><input className="cellinp" value={s.market} onChange={(e) => upd(s.id, "market", num(e.target.value))} /></td>
-                <td><input className="cellinp" value={s.price} onChange={(e) => upd(s.id, "price", num(e.target.value))} /></td>
-                <td><input className="cellinp" style={{ width: 66 }} value={(s.cost * 100).toFixed(0)} onChange={(e) => upd(s.id, "cost", num(e.target.value) / 100)} /></td>
-                {s.orders.map((o, i) => (
-                  <td key={"o" + i}><input className="cellinp" style={{ width: 62 }} value={o} onChange={(e) => upd(s.id, "orders", num(e.target.value), i)} /></td>
-                ))}
-                {s.orders.map((o, i) => (
-                  <td key={"s" + i} className="mono" style={{ color: "var(--teal)" }}>{s.market ? ((o / s.market) * 100).toFixed(1) + "%" : "—"}</td>
-                ))}
-              </tr>
-            ))}
+            {svcs.map((s) => {
+              const isActive = s.active !== false;
+              return (
+                <tr key={s.id} style={{ opacity: isActive ? 1 : 0.55 }}>
+                  <td style={{ textAlign: "left" }}>
+                    <button
+                      className="pill"
+                      onClick={() => onToggleActive(s.id)}
+                      title={isActive ? "Click to suspend this service" : "Click to reactivate this service"}
+                      style={{
+                        border: "none", cursor: "pointer",
+                        background: isActive ? "rgba(70,185,138,.15)" : "rgba(217,123,123,.15)",
+                        color: isActive ? "var(--green)" : "var(--red)",
+                      }}
+                    >
+                      {isActive ? "Active" : "Suspended"}
+                    </button>
+                  </td>
+                  <td><input className="cellinp" style={{ width: 210, textAlign: "left" }} value={s.name} onChange={(e) => upd(s.id, "name", e.target.value)} /></td>
+                  <td><input className="cellinp" value={s.market} onChange={(e) => upd(s.id, "market", num(e.target.value))} /></td>
+                  <td><input className="cellinp" value={s.price} onChange={(e) => upd(s.id, "price", num(e.target.value))} /></td>
+                  <td><input className="cellinp" style={{ width: 66 }} value={(s.cost * 100).toFixed(0)} onChange={(e) => upd(s.id, "cost", num(e.target.value) / 100)} /></td>
+                  {s.orders.map((o, i) => (
+                    <td key={"o" + i}><input className="cellinp" style={{ width: 62 }} value={o} onChange={(e) => upd(s.id, "orders", num(e.target.value), i)} /></td>
+                  ))}
+                  {s.orders.map((o, i) => (
+                    <td key={"s" + i} className="mono" style={{ color: "var(--teal)" }}>{s.market ? ((o / s.market) * 100).toFixed(1) + "%" : "—"}</td>
+                  ))}
+                  <td><button className="iconbtn" onClick={() => confirmDelete(s)} title="Delete this service permanently"><Trash2 size={15} /></button></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <div className="hint" style={{ marginTop: 12 }}>Type order targets — the <b style={{ color: "var(--teal)" }}>teal share %</b> columns compute themselves (orders ÷ market). Everything recalculates instantly.</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
+          <button className="btn ghost sm" onClick={onAddService}><Plus size={14} /> Add service</button>
+          <div className="hint">{activeCount} of {svcs.length} service{svcs.length !== 1 ? "s" : ""} active · counted in all totals</div>
+        </div>
+        <div className="hint" style={{ marginTop: 10 }}>Type order targets — the <b style={{ color: "var(--teal)" }}>teal share %</b> columns compute themselves (orders ÷ market). Everything recalculates instantly.</div>
       </div>
     </>
   );
@@ -863,7 +919,7 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
   const s = svcs.find((x) => x.id === sel) || svcs[0];
   const p = PORTFOLIO[s?.id];
   const isConsult = s?.id === 3 || s?.id === 4;
-  const groups = portfolioItems[s?.id] || p?.groups || [];
+  const groups = portfolioItems[s?.id] || p?.groups || [{ title: "Services", items: [] }];
 
   const setOrder = (idx, val) => {
     const n = isNaN(parseFloat(val)) ? 0 : parseFloat(val);
@@ -908,15 +964,16 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {svcs.map((x) => (
-          <button key={x.id} className={"navb" + (sel === x.id ? " on" : "")} onClick={() => setSel(x.id)} style={{ fontSize: 13, padding: "8px 12px" }}>{x.name}</button>
+          <button key={x.id} className={"navb" + (sel === x.id ? " on" : "")} onClick={() => setSel(x.id)} style={{ fontSize: 13, padding: "8px 12px", opacity: x.active === false ? 0.55 : 1 }}>{x.name}{x.active === false ? " \u00b7 Suspended" : ""}</button>
         ))}
       </div>
 
-      {p ? (
-        <>
-          <div className="note" style={{ marginBottom: 16 }}>
-            {isConsult ? <><b>Client expectations.</b> {p.note.replace("What clients expect: ", "")}</> : p.note}
-          </div>
+      <>
+          {p && (
+            <div className="note" style={{ marginBottom: 16 }}>
+              {isConsult ? <><b>Client expectations.</b> {p.note.replace("What clients expect: ", "")}</> : p.note}
+            </div>
+          )}
 
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="eyebrow" style={{ marginBottom: 12 }}>Order targets · what marketing must deliver</div>
@@ -1017,9 +1074,6 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
             </>
           )}
         </>
-      ) : (
-        <div className="note">No portfolio detail captured for this line yet.</div>
-      )}
     </>
   );
 }
@@ -1050,8 +1104,8 @@ function Revenue({ calc }) {
             {calc.rows.map((r) => {
               const d = r.yrs[yr];
               return (
-                <tr key={r.id}>
-                  <td className="svc">{r.name}</td>
+                <tr key={r.id} style={{ opacity: r.active === false ? 0.55 : 1 }}>
+                  <td className="svc">{r.name}{r.active === false && <span className="tag" style={{ marginLeft: 8, color: "var(--red)" }}>Suspended</span>}</td>
                   <td className="mono">{pct(d.sh)}</td>
                   <td className="mono">{Math.round(d.customers).toLocaleString()}</td>
                   <td className="mono">{Rk(r.price)}</td>
@@ -1158,7 +1212,7 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {svcs.map((x) => (
-          <button key={x.id} className={"navb" + (sel === x.id ? " on" : "")} onClick={() => setSel(x.id)} style={{ fontSize: 13, padding: "8px 12px" }}>{x.name}</button>
+          <button key={x.id} className={"navb" + (sel === x.id ? " on" : "")} onClick={() => setSel(x.id)} style={{ fontSize: 13, padding: "8px 12px", opacity: x.active === false ? 0.55 : 1 }}>{x.name}{x.active === false ? " \u00b7 Suspended" : ""}</button>
         ))}
       </div>
 
@@ -1243,8 +1297,8 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
               const rd = r.fyrs[yr];
               const gpc = r.price * (1 - r.cost);
               return (
-                <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => setSel(r.id)}>
-                  <td className="svc">{r.name}</td>
+                <tr key={r.id} style={{ cursor: "pointer", opacity: r.active === false ? 0.55 : 1 }} onClick={() => setSel(r.id)}>
+                  <td className="svc">{r.name}{r.active === false && <span className="tag" style={{ marginLeft: 8, color: "var(--red)" }}>Suspended</span>}</td>
                   <td style={{ textAlign: "left", color: "var(--slate)" }}>{r.mkt.channel}</td>
                   <td className="mono">{Math.round(rd.customers).toLocaleString()}</td>
                   <td className="mono">{Math.round(rd.leads).toLocaleString()}</td>
@@ -1287,7 +1341,7 @@ function Resources({ budget, setBudget, calc, mktCost, fc }) {
   const setC = (k, v) => setCap((c) => ({ ...c, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const y1 = calc.totals[0], y3 = calc.totals[2];
   // Capacity: total sales touches the Y1 funnel demands vs hours the team has
-  const touchesY1 = fc.rows.reduce((a, r) => a + r.fyrs[0].leads * (r.mkt?.touches || 0), 0);
+  const touchesY1 = fc.rows.filter((r) => r.active !== false).reduce((a, r) => a + r.fyrs[0].leads * (r.mkt?.touches || 0), 0);
   const reqHours = (cap.touchesPerHour ? touchesY1 / cap.touchesPerHour : 0) + cap.contentHrsMonth * 12;
   const heads = budget.salesMgr + budget.campMgr;
   const availHours = heads * cap.hoursPerMonth * 12;
@@ -1966,25 +2020,32 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
   const setAct = (svcId, mi, val) =>
     setActuals((prev) => ({
       ...prev,
-      [svcId]: prev[svcId].map((v, i) => (i === mi ? (parseFloat(val) || 0) : v)),
+      [svcId]: (prev[svcId] || Array(12).fill(0)).map((v, i) => (i === mi ? (parseFloat(val) || 0) : v)),
     }));
 
   const projPerMonth = (svc) => (svc.orders[0] || 0) / 12;
-  const gpu = (svcId) => GP_PER_UNIT[svcId] || 0;
+  // Falls back to price × (1 - cost%) for any service without a hand-entered AUK MIS rate (e.g. newly added lines)
+  const gpu = (svcId) => {
+    if (GP_PER_UNIT[svcId] !== undefined) return GP_PER_UNIT[svcId];
+    const sv = svcs.find((x) => x.id === svcId);
+    return sv ? sv.price * (1 - sv.cost) : 0;
+  };
+  const actOf = (svcId, mi) => (actuals[svcId] || [])[mi] || 0;
   const indirect = misIndirect.hr + misIndirect.other;
+  const activeSvcs = svcs.filter((sv) => sv.active !== false);
 
-  // Per-month aggregate data (all services)
+  // Per-month aggregate data (active services only)
   const monthlyAgg = MIS_MONTHS.map((m, mi) => {
     let projGP = 0, actGP = 0;
-    svcs.forEach((sv) => {
+    activeSvcs.forEach((sv) => {
       projGP += projPerMonth(sv) * gpu(sv.id);
-      actGP += (actuals[sv.id][mi] || 0) * gpu(sv.id);
+      actGP += actOf(sv.id, mi) * gpu(sv.id);
     });
     return { month: m, projGP, actGP, projProfit: projGP - indirect, actProfit: actGP - indirect };
   });
 
   // YTD (months where actuals were entered)
-  const activeMonths = MIS_MONTHS.filter((_, mi) => svcs.some((sv) => (actuals[sv.id][mi] || 0) > 0)).length;
+  const activeMonths = MIS_MONTHS.filter((_, mi) => activeSvcs.some((sv) => actOf(sv.id, mi) > 0)).length;
   const ytdProjGP = monthlyAgg.slice(0, Math.max(activeMonths, 1)).reduce((a, m) => a + m.projGP, 0);
   const ytdActGP  = monthlyAgg.slice(0, Math.max(activeMonths, 1)).reduce((a, m) => a + m.actGP, 0);
   const ytdVar    = ytdActGP - ytdProjGP;
@@ -1992,7 +2053,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
   // Per-service for selected line
   const svcRows = MIS_MONTHS.map((m, mi) => {
     const proj = projPerMonth(s);
-    const act  = actuals[s.id][mi] || 0;
+    const act  = actOf(s.id, mi);
     return { month: m, proj, act, projGP: proj * gpu(s.id), actGP: act * gpu(s.id), var: act - proj };
   });
 
@@ -2026,15 +2087,15 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
             {svcs.map((x) => (
-              <button key={x.id} className={"navb" + (selSvc === x.id ? " on" : "")} onClick={() => setSelSvc(x.id)} style={{ fontSize: 12.5, padding: "7px 11px" }}>{x.name}</button>
+              <button key={x.id} className={"navb" + (selSvc === x.id ? " on" : "")} onClick={() => setSelSvc(x.id)} style={{ fontSize: 12.5, padding: "7px 11px", opacity: x.active === false ? 0.55 : 1 }}>{x.name}{x.active === false ? " \u00b7 Suspended" : ""}</button>
             ))}
           </div>
 
           <div className="grid g4" style={{ marginBottom: 16 }}>
             <Kpi label="Monthly target" val={Math.round(projPerMonth(s)).toLocaleString() + " units"} foot={`${Rk(projPerMonth(s) * gpu(s.id))} GP / month`} fill={0.6} accent="var(--brass)" />
             <Kpi label="Avg GP per unit" val={Rk(gpu(s.id))} foot="From AUK MIS data" fill={0.5} />
-            <Kpi label="YTD actual units" val={svcs.find(x=>x.id===selSvc) ? MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[selSvc][mi]||0),0).toFixed(1) : "0"} foot="Enter actuals below" fill={0.6} accent="var(--teal)" />
-            <Kpi label="YTD actual GP" val={Rk(MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[selSvc][mi]||0)*gpu(selSvc),0))} foot="vs target" fill={0.5} accent="var(--green)" />
+            <Kpi label="YTD actual units" val={svcs.find(x=>x.id===selSvc) ? MIS_MONTHS.reduce((a,_,mi)=>a+actOf(selSvc,mi),0).toFixed(1) : "0"} foot="Enter actuals below" fill={0.6} accent="var(--teal)" />
+            <Kpi label="YTD actual GP" val={Rk(MIS_MONTHS.reduce((a,_,mi)=>a+actOf(selSvc,mi)*gpu(selSvc),0))} foot="vs target" fill={0.5} accent="var(--green)" />
           </div>
 
           <div className="card" style={{ overflowX: "auto" }}>
@@ -2060,7 +2121,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
                       <td className="mono">{r.proj.toFixed(1)}</td>
                       <td>
                         <input className="cellinp" style={{ width: 70 }}
-                          value={actuals[s.id][mi] || ""}
+                          value={actOf(s.id, mi) || ""}
                           placeholder="0"
                           onChange={(e) => setAct(s.id, mi, e.target.value)} />
                       </td>
@@ -2076,10 +2137,10 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
                 <tr>
                   <td>Annual</td>
                   <td className="mono">{(s.orders[0] || 0).toFixed(0)}</td>
-                  <td className="mono">{MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[s.id][mi]||0),0).toFixed(1)}</td>
+                  <td className="mono">{MIS_MONTHS.reduce((a,_,mi)=>a+actOf(s.id,mi),0).toFixed(1)}</td>
                   <td></td>
                   <td className="mono">{Rk((s.orders[0]||0) * gpu(s.id))}</td>
-                  <td className="mono">{Rk(MIS_MONTHS.reduce((a,_,mi)=>a+(actuals[s.id][mi]||0)*gpu(s.id),0))}</td>
+                  <td className="mono">{Rk(MIS_MONTHS.reduce((a,_,mi)=>a+actOf(s.id,mi)*gpu(s.id),0))}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -2193,7 +2254,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
                     <td><input className="cellinp" style={{ width: 150, textAlign: "left" }} placeholder="Contact name" value={p.name} onChange={(e) => updP(p.id, "name", e.target.value)} /></td>
                     <td style={{ textAlign: "left" }}>
                       <select className="sel" style={{ padding: "5px 8px", fontSize: 12 }} value={p.svc} onChange={(e) => updP(p.id, "svc", e.target.value)}>
-                        {SEED.map((sv) => <option key={sv.id} value={sv.name}>{sv.name}</option>)}
+                        {svcs.map((sv) => <option key={sv.id} value={sv.name}>{sv.name}{sv.active === false ? " (Suspended)" : ""}</option>)}
                       </select>
                     </td>
                     <td style={{ textAlign: "left" }}>
@@ -2217,7 +2278,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
 const STAGES = ["Lead", "Contacted", "Meeting", "Proposal", "Won"];
 const STAGECLR = { Lead: "var(--slate)", Contacted: "var(--teal)", Meeting: "var(--brass)", Proposal: "var(--amber)", Won: "var(--green)" };
 
-function CRM() {
+function CRM({ svcs }) {
   const [fb, setFb] = useState({ views: 42000, likes: 1850, clicks: 640, leads: 95 });
   // 5 blank contact slots per service — fill with your real pipeline
   const [rows, setRows] = useState(() =>
@@ -2233,7 +2294,7 @@ function CRM() {
   const ctr = fb.views ? fb.clicks / fb.views : 0;
   const conv = fb.clicks ? fb.leads / fb.clicks : 0;
 
-  const addRow = () => setRows((r) => [...r, { id: Date.now(), name: "", co: "", svc: "Logistics", stage: "Lead", val: 0 }]);
+  const addRow = () => setRows((r) => [...r, { id: Date.now(), name: "", co: "", svc: svcs[0]?.name || "", stage: "Lead", val: 0 }]);
   const upd = (id, k, v) => setRows((r) => r.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
   const del = (id) => setRows((r) => r.filter((x) => x.id !== id));
   const openPipe = rows.filter((r) => r.stage !== "Won").reduce((a, r) => a + (+r.val || 0), 0);
@@ -2265,7 +2326,7 @@ function CRM() {
 
 <div className="divh"><h3>Pipeline</h3><div className="ln" /><span className="tag">Open {Rk(openPipe)} · Won {Rk(won)}</span></div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-        {["All services", ...SEED.map((s) => s.name)].map((n) => (
+        {["All services", ...svcs.map((s) => s.name)].map((n) => (
           <button key={n} className={"navb" + (svcFilter === n ? " on" : "")} onClick={() => setSvcFilter(n)} style={{ fontSize: 12.5, padding: "7px 11px" }}>{n}</button>
         ))}
       </div>
@@ -2281,7 +2342,7 @@ function CRM() {
                 <td><input className="cellinp" style={{ width: 170, textAlign: "left" }} placeholder="Company" value={r.co} onChange={(e) => upd(r.id, "co", e.target.value)} /></td>
                 <td style={{ textAlign: "left" }}>
                   <select className="sel" style={{ padding: "5px 8px", fontSize: 13 }} value={r.svc} onChange={(e) => upd(r.id, "svc", e.target.value)}>
-                    {SEED.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    {svcs.map((s) => <option key={s.id} value={s.name}>{s.name}{s.active === false ? " (Suspended)" : ""}</option>)}
                   </select>
                 </td>
                 <td style={{ textAlign: "left" }}>
