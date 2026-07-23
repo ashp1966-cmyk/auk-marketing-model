@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell,
@@ -616,29 +616,55 @@ export default function App() {
     budget.socialAds + budget.otherPromo +
     (budget.salesCallBudget || 0) + (budget.eventsBudget || 0);
 
-  // Auto-save to localStorage whenever key data changes
+  // Single source of truth for what gets persisted, reused by auto-save, manual save, sign-out, and page-unload
+  const buildSaveData = useCallback(() => ({
+    svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans,
+    savedAt: new Date().toISOString(),
+  }), [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
+
+  const persistNow = useCallback(() => {
+    try {
+      localStorage.setItem("auk-marketing-v1", JSON.stringify(buildSaveData()));
+      return true;
+    } catch (e) { return false; }
+  }, [buildSaveData]);
+
+  // Auto-save to localStorage whenever key data changes (debounced while actively typing)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, savedAt: new Date().toISOString() };
-        localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
-      } catch (e) {}
-    }, 1200); // 1.2s debounce
+    const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
+  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, persistNow]);
+
+  // Safety net: always keep a ref to the latest data, and flush it immediately if the
+  // tab is closed, refreshed, or backgrounded before the debounce above has a chance to fire.
+  const saveDataRef = useRef(null);
+  useEffect(() => { saveDataRef.current = buildSaveData(); });
+  useEffect(() => {
+    const flush = () => {
+      try {
+        if (saveDataRef.current) localStorage.setItem("auk-marketing-v1", JSON.stringify(saveDataRef.current));
+      } catch (e) {}
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("beforeunload", flush);
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   const saveNow = useCallback(() => {
-    try {
-      const data = { svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, savedAt: new Date().toISOString() };
-      localStorage.setItem("auk-marketing-v1", JSON.stringify(data));
-      setSaveMsg("Saved ✓");
-      setTimeout(() => setSaveMsg(""), 2500);
-    } catch (e) { setSaveMsg("Save failed"); }
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
+    const ok = persistNow();
+    setSaveMsg(ok ? "Saved ✓" : "Save failed");
+    setTimeout(() => setSaveMsg(""), 2500);
+  }, [persistNow]);
 
   const downloadBackup = useCallback(() => {
-    exportJSON({ svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, savedAt: new Date().toISOString() });
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
+    exportJSON(buildSaveData());
+  }, [buildSaveData]);
 
   const funnelCalc = useMemo(() => {
     const rows = calc.rows.map((r) => {
@@ -703,7 +729,7 @@ export default function App() {
         <button className="btn ghost sm" onClick={downloadBackup} title="Download backup JSON">
           <Download size={14} />
         </button>
-        <button className="btn ghost sm" onClick={() => setAuthed(false)} title="Sign out">
+        <button className="btn ghost sm" onClick={() => { persistNow(); setAuthed(false); }} title="Sign out">
           <LogOut size={15} /> Sign out
         </button>
       </div>
