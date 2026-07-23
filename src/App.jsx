@@ -193,14 +193,20 @@ const CLIENT_EXPECT = "What clients expect: expert, tailored advice & strategy; 
 /* ---- Business Plan & Strategy data — from AUK strategy workbook (2025) ---- */
 const VISION = "Africa's Leading Digital & Green Training, Maritime, Mining, Metallurgy & Logistics Solutions Partner";
 
-const GOALS5_SEED = {
-  1: { turnover: 15000000, profit: 2250000, clients: 25 },
-  2: { turnover: 25000000, profit: 3750000, clients: 5 },
-  3: { turnover: 7500000,  profit: 1125000, clients: 8 },
-  4: { turnover: 7500000,  profit: 1125000, clients: 7 },
-  5: { turnover: 25000000, profit: 3750000, clients: 5 },
-  6: { turnover: 15000000, profit: 2250000, clients: 15 },
+// Turnover/profit board-level goals per year — editable aspirations, independent of the funnel model's own projection.
+// Client counts are NOT stored here — they are always read live from the Inputs tab's order targets.
+const GOALS_SEED = {
+  1: { turnover: [4000000, 8000000, 15000000], profit: [600000, 1200000, 2250000] },
+  2: { turnover: [7000000, 14000000, 25000000], profit: [1050000, 2100000, 3750000] },
+  3: { turnover: [2000000, 4000000, 7500000],   profit: [300000, 600000, 1125000] },
+  4: { turnover: [2000000, 4000000, 7500000],   profit: [300000, 600000, 1125000] },
+  5: { turnover: [7000000, 14000000, 25000000], profit: [1050000, 2100000, 3750000] },
+  6: { turnover: [4000000, 8000000, 15000000], profit: [600000, 1200000, 2250000] },
 };
+// Actuals recorded against the goals above — starts blank, filled in as the years play out.
+const GOAL_ACTUALS_SEED = Object.fromEntries(
+  [1, 2, 3, 4, 5, 6].map((id) => [id, { turnover: [0, 0, 0], profit: [0, 0, 0], clients: [0, 0, 0] }])
+);
 
 const SWOT = {
   strengths: [
@@ -547,7 +553,8 @@ export default function App() {
   const [saveMsg, setSaveMsg] = useState("");
   const _saved = loadSaved();
   const [portfolioItems, setPortfolioItems] = useState(() => initPortfolioItems(_saved.portfolioItems));
-  const [goals5, setGoals5] = useState(() => _saved.goals5 || GOALS5_SEED);
+  const [goals5, setGoals5] = useState(() => _saved.goals5 || GOALS_SEED);
+  const [goalActuals, setGoalActuals] = useState(() => _saved.goalActuals || GOAL_ACTUALS_SEED);
   const [roadmap, setRoadmap] = useState(() => _saved.roadmap || ROADMAP_SEED);
   const [competitors, setCompetitors] = useState(() => _saved.competitors || COMPETITORS_SEED);
   const [ideas, setIdeas] = useState(() => _saved.ideas || IDEAS_SEED);
@@ -632,9 +639,9 @@ export default function App() {
   // Single source of truth for what gets persisted, reused by auto-save, manual save, sign-out, and page-unload
   const buildSaveData = useCallback(() => ({
     svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb,
-    portfolioItems, goals5, roadmap, competitors, ideas, scans,
+    portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
     savedAt: new Date().toISOString(),
-  }), [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
+  }), [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans]);
 
   const persistNow = useCallback(() => {
     try {
@@ -647,7 +654,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, roadmap, competitors, ideas, scans, persistNow]);
+  }, [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans, persistNow]);
 
   // Safety net: always keep a ref to the latest data, and flush it immediately if the
   // tab is closed, refreshed, or backgrounded before the debounce above has a chance to fire.
@@ -768,7 +775,7 @@ export default function App() {
         {tab === "play" && <Playbook />}
         {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
         {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} />}
-        {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
+        {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
       </div>
     </div>
   );
@@ -1591,9 +1598,8 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
 const RM_STATUS = ["Pending", "In progress", "Done"];
 const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
 
-function BizPlan({ svcs, goals5, setGoals5, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans }) {
+function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans }) {
   const [view, setView] = useState("goals");
-  const setG = (id, k, v) => setGoals5((prev) => ({ ...prev, [id]: { ...prev[id], [k]: parseFloat(v) || 0 } }));
   const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
   const updComp = (id, k, v) => setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, [k]: v } : c)));
   const addComp = () => setCompetitors((prev) => [...prev, { id: Date.now(), name: "", adv: "", counter: "" }]);
@@ -1654,12 +1660,40 @@ Return exactly 5 trends, ranked most important first.`;
     setScans((prev) => prev.filter((x) => x.id !== id));
     if (activeScanId === id) setActiveScanId(null);
   };
+  const [goalYr, setGoalYr] = useState(2);
+  // Goal turnover/profit are editable board-level targets, per year, per service.
+  // Fall back to the funnel model's own projection for that service/year if nothing has been typed yet.
+  const setG = (id, k, yi, v) => setGoals5((prev) => {
+    const cur = prev[id] || { turnover: [0, 0, 0], profit: [0, 0, 0] };
+    const arr = [...(cur[k] || [0, 0, 0])];
+    arr[yi] = parseFloat(v) || 0;
+    return { ...prev, [id]: { ...cur, [k]: arr } };
+  });
+  const setGA = (id, k, yi, v) => setGoalActuals((prev) => {
+    const cur = prev[id] || { turnover: [0, 0, 0], profit: [0, 0, 0], clients: [0, 0, 0] };
+    const arr = [...(cur[k] || [0, 0, 0])];
+    arr[yi] = parseFloat(v) || 0;
+    return { ...prev, [id]: { ...cur, [k]: arr } };
+  });
+  // Client goal is never typed here — it is always the live order target from the Inputs tab.
+  const clientGoal = (s, yi) => s.orders?.[yi] || 0;
+  const goalOf = (id, k, yi) => {
+    const stored = goals5[id]?.[k]?.[yi];
+    if (stored) return stored;
+    const row = calc.rows.find((r) => r.id === id);
+    return row ? (k === "turnover" ? row.yrs[yi].turnover : row.yrs[yi].gp) : 0;
+  };
+  const actualOf = (id, k, yi) => goalActuals[id]?.[k]?.[yi] || 0;
+
   const EFFECT_CLR = { Opportunity: "var(--green)", Threat: "var(--red)", Both: "var(--amber)" };
   const IMPACT_CLR = { High: "var(--red)", Medium: "var(--amber)", Low: "var(--slate)" };
 
-  const totT = svcs.reduce((a, s) => a + (goals5[s.id]?.turnover || 0), 0);
-  const totP = svcs.reduce((a, s) => a + (goals5[s.id]?.profit || 0), 0);
-  const totC = svcs.reduce((a, s) => a + (goals5[s.id]?.clients || 0), 0);
+  const totT = svcs.reduce((a, s) => a + goalOf(s.id, "turnover", goalYr), 0);
+  const totP = svcs.reduce((a, s) => a + goalOf(s.id, "profit", goalYr), 0);
+  const totC = svcs.reduce((a, s) => a + clientGoal(s, goalYr), 0);
+  const totTA = svcs.reduce((a, s) => a + actualOf(s.id, "turnover", goalYr), 0);
+  const totPA = svcs.reduce((a, s) => a + actualOf(s.id, "profit", goalYr), 0);
+  const totCA = svcs.reduce((a, s) => a + actualOf(s.id, "clients", goalYr), 0);
   const done = roadmap.filter((r) => r.status === "Done").length;
 
   return (
@@ -1676,41 +1710,74 @@ Return exactly 5 trends, ranked most important first.`;
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {[["goals","5-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"],["radar","AI Trend Radar"]].map(([v,l]) => (
+        {[["goals","3-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"],["radar","AI Trend Radar"]].map(([v,l]) => (
           <button key={v} className={"navb" + (view === v ? " on" : "")} onClick={() => setView(v)} style={{ fontSize: 13, padding: "8px 12px" }}>{l}</button>
         ))}
       </div>
 
       {view === "goals" && (
         <>
+          <div className="sub" style={{ marginBottom: 12 }}>Turnover and profit are board-level goals you set — editable, and default to the funnel model's own projection until you type something different. Clients always come straight from the order targets on the Inputs tab, never typed here.</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+            {YEARS.map((y, i) => (
+              <button key={i} className={"navb" + (goalYr === i ? " on" : "")} onClick={() => setGoalYr(i)} style={{ fontSize: 13, padding: "7px 12px" }}>{y}</button>
+            ))}
+          </div>
           <div className="grid g3" style={{ marginBottom: 16 }}>
-            <Kpi label="5-year turnover goal" val={Rk(totT)} foot="All six services" fill={0.8} accent="var(--brass)" />
-            <Kpi label="5-year profit goal" val={Rk(totP)} foot={pct(totT ? totP / totT : 0) + " blended"} fill={0.6} accent="var(--green)" />
-            <Kpi label="Client base goal" val={totC + " clients"} foot="Active client relationships" fill={0.6} accent="var(--teal)" />
+            <Kpi label={`Turnover goal · ${YEARS[goalYr]}`} val={Rk(totT)} foot={`Actual: ${Rk(totTA)}`} fill={0.8} accent="var(--brass)" />
+            <Kpi label={`Profit goal · ${YEARS[goalYr]}`} val={Rk(totP)} foot={`Actual: ${Rk(totPA)}`} fill={0.6} accent="var(--green)" />
+            <Kpi label={`Client goal · ${YEARS[goalYr]}`} val={totC + " clients"} foot={`Actual: ${totCA} · from Inputs tab`} fill={0.6} accent="var(--teal)" />
           </div>
           <div className="card" style={{ overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>Service line</th><th>Turnover (R)</th><th>Profit (R)</th><th>Profit %</th><th>Clients</th></tr></thead>
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Service line</th>
+                  <th colSpan={3} style={{ textAlign: "center", borderBottom: "1px solid var(--line)" }}>Turnover (R)</th>
+                  <th colSpan={3} style={{ textAlign: "center", borderBottom: "1px solid var(--line)" }}>Profit (R)</th>
+                  <th colSpan={3} style={{ textAlign: "center", borderBottom: "1px solid var(--line)" }}>Clients</th>
+                </tr>
+                <tr>
+                  <th>Goal</th><th>Actual</th><th>Var</th>
+                  <th>Goal</th><th>Actual</th><th>Var</th>
+                  <th>Goal (Inputs)</th><th>Actual</th><th>Var</th>
+                </tr>
+              </thead>
               <tbody>
                 {svcs.map((s) => {
-                  const g = goals5[s.id] || { turnover: 0, profit: 0, clients: 0 };
+                  const tG = goalOf(s.id, "turnover", goalYr), tA = actualOf(s.id, "turnover", goalYr);
+                  const pG = goalOf(s.id, "profit", goalYr), pA = actualOf(s.id, "profit", goalYr);
+                  const cG = clientGoal(s, goalYr), cA = actualOf(s.id, "clients", goalYr);
+                  const vClr = (goal, act) => (act === 0 ? "var(--slate)" : act >= goal ? "var(--green)" : "var(--red)");
                   return (
                     <tr key={s.id}>
                       <td className="svc">{s.name}</td>
-                      <td><input className="cellinp" style={{ width: 110 }} value={g.turnover} onChange={(e) => setG(s.id, "turnover", e.target.value)} /></td>
-                      <td><input className="cellinp" style={{ width: 100 }} value={g.profit} onChange={(e) => setG(s.id, "profit", e.target.value)} /></td>
-                      <td className="mono" style={{ color: "var(--teal)" }}>{g.turnover ? ((g.profit / g.turnover) * 100).toFixed(0) + "%" : "—"}</td>
-                      <td><input className="cellinp" style={{ width: 60 }} value={g.clients} onChange={(e) => setG(s.id, "clients", e.target.value)} /></td>
+                      <td><input className="cellinp" style={{ width: 100 }} value={tG} onChange={(e) => setG(s.id, "turnover", goalYr, e.target.value)} /></td>
+                      <td><input className="cellinp" style={{ width: 100 }} value={tA || ""} placeholder="0" onChange={(e) => setGA(s.id, "turnover", goalYr, e.target.value)} /></td>
+                      <td className="mono" style={{ color: vClr(tG, tA) }}>{tA ? Rk(tA - tG) : "—"}</td>
+                      <td><input className="cellinp" style={{ width: 90 }} value={pG} onChange={(e) => setG(s.id, "profit", goalYr, e.target.value)} /></td>
+                      <td><input className="cellinp" style={{ width: 90 }} value={pA || ""} placeholder="0" onChange={(e) => setGA(s.id, "profit", goalYr, e.target.value)} /></td>
+                      <td className="mono" style={{ color: vClr(pG, pA) }}>{pA ? Rk(pA - pG) : "—"}</td>
+                      <td className="mono" style={{ color: "var(--teal)" }}>{cG}</td>
+                      <td><input className="cellinp" style={{ width: 60 }} value={cA || ""} placeholder="0" onChange={(e) => setGA(s.id, "clients", goalYr, e.target.value)} /></td>
+                      <td className="mono" style={{ color: vClr(cG, cA) }}>{cA ? (cA - cG) : "—"}</td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot><tr><td>Total</td><td className="mono">{Rk(totT)}</td><td className="mono">{Rk(totP)}</td><td className="mono">{totT ? ((totP/totT)*100).toFixed(0) + "%" : ""}</td><td className="mono">{totC}</td></tr></tfoot>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <td className="mono">{Rk(totT)}</td><td className="mono">{Rk(totTA)}</td><td className="mono">{totTA ? Rk(totTA - totT) : ""}</td>
+                  <td className="mono">{Rk(totP)}</td><td className="mono">{Rk(totPA)}</td><td className="mono">{totPA ? Rk(totPA - totP) : ""}</td>
+                  <td className="mono">{totC}</td><td className="mono">{totCA}</td><td className="mono">{totCA ? (totCA - totC) : ""}</td>
+                </tr>
+              </tfoot>
             </table>
-            <div className="hint" style={{ marginTop: 10 }}>All targets editable — they auto-save. Year 1–3 stepping stones toward these live on the Inputs tab as order targets.</div>
+            <div className="hint" style={{ marginTop: 10 }}>Goal columns are editable board-level targets (Turnover/Profit) or read straight from the Inputs tab (Clients). Actual columns are what you type in as the year plays out — variance and colour (green = met or beat goal, red = behind) update instantly. Everything saves automatically.</div>
           </div>
           <div className="note" style={{ marginTop: 16 }}>
-            <b>Beyond the numbers, the 5-year scorecard also tracks:</b> client satisfaction (quality = 100%, delays = 0, errors = 0, pricing below comparable competitors) and 4IR readiness (value optimisation, platform presence, digital provision, technology infusion, value to society &amp; environment — each targeted at 95–100%).
+            <b>Beyond the numbers, the scorecard also tracks:</b> client satisfaction (quality = 100%, delays = 0, errors = 0, pricing below comparable competitors) and 4IR readiness (value optimisation, platform presence, digital provision, technology infusion, value to society &amp; environment — each targeted at 95–100%).
           </div>
         </>
       )}
