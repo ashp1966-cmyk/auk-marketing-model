@@ -565,6 +565,19 @@ export default function App() {
     _saved.actuals || Object.fromEntries(SEED.map((s) => [s.id, Array(12).fill(0)]))
   );
   const [misIndirect, setMisIndirect] = useState(() => _saved.misIndirect || { hr: 24000, other: 62500 });
+  const [cap, setCap] = useState(() => _saved.cap || { hoursPerMonth: 140, touchesPerHour: 2, contentHrsMonth: 40 });
+  const [calendar, setCalendar] = useState(() => _saved.calendar || []);
+  const [prospects, setProspects] = useState(() =>
+    _saved.prospects || PROSPECTS.map((p, i) => ({ ...p, id: i + 1, name: "" }))
+  );
+  const [crmRows, setCrmRows] = useState(() =>
+    _saved.crmRows || SEED.flatMap((s, si) =>
+      Array.from({ length: 5 }, (_, i) => ({
+        id: si * 10 + i + 1, name: "", co: "", svc: s.name, stage: "Lead", val: 0,
+      }))
+    )
+  );
+  const [crmFb, setCrmFb] = useState(() => _saved.crmFb || { views: 42000, likes: 1850, clicks: 640, leads: 95 });
 
   // ---- Service lifecycle: add / suspend-reactivate / delete ----
   const addService = useCallback(() => {
@@ -618,9 +631,10 @@ export default function App() {
 
   // Single source of truth for what gets persisted, reused by auto-save, manual save, sign-out, and page-unload
   const buildSaveData = useCallback(() => ({
-    svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans,
+    svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb,
+    portfolioItems, goals5, roadmap, competitors, ideas, scans,
     savedAt: new Date().toISOString(),
-  }), [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
+  }), [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, roadmap, competitors, ideas, scans]);
 
   const persistNow = useCallback(() => {
     try {
@@ -633,7 +647,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, portfolioItems, goals5, roadmap, competitors, ideas, scans, persistNow]);
+  }, [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, roadmap, competitors, ideas, scans, persistNow]);
 
   // Safety net: always keep a ref to the latest data, and flush it immediately if the
   // tab is closed, refreshed, or backgrounded before the debounce above has a chance to fire.
@@ -749,11 +763,11 @@ export default function App() {
         {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
         {tab === "rev" && <Revenue calc={calc} />}
         {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
-        {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} />}
-        {tab === "camp" && <Campaign svcs={svcs} />}
+        {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
+        {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} />}
         {tab === "play" && <Playbook />}
-        {tab === "crm" && <CRM svcs={svcs} />}
-        {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} />}
+        {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
+        {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} />}
         {tab === "plan" && <BizPlan svcs={svcs} goals5={goals5} setGoals5={setGoals5} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
       </div>
     </div>
@@ -1361,9 +1375,8 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
 }
 
 /* ---------------------------------------------------------------- resources */
-function Resources({ budget, setBudget, calc, mktCost, fc }) {
+function Resources({ budget, setBudget, calc, mktCost, fc, cap, setCap }) {
   const set = (k, v) => setBudget((b) => ({ ...b, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
-  const [cap, setCap] = useState({ hoursPerMonth: 140, touchesPerHour: 2, contentHrsMonth: 40 });
   const setC = (k, v) => setCap((c) => ({ ...c, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const y1 = calc.totals[0], y3 = calc.totals[2];
   // Capacity: total sales touches the Y1 funnel demands vs hours the team has
@@ -1457,7 +1470,7 @@ const PROMO_METHODS = [
   ["Referrals & word of mouth", "Structured asks from delivered clients; the cheapest channel with the highest trust."],
 ];
 
-function Campaign({ svcs }) {
+function Campaign({ svcs, calendar, setCalendar }) {
   const [service, setService] = useState(svcs[0]?.name || "");
   const svcObj = svcs.find((x) => x.name === service) || svcs[0];
   const chanToPlatform = { LinkedIn: "LinkedIn", Meta: "Facebook", Google: "LinkedIn", Email: "LinkedIn", Referral: "LinkedIn" };
@@ -1466,7 +1479,6 @@ function Campaign({ svcs }) {
   const [tone, setTone] = useState("Authoritative");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [calendar, setCalendar] = useState([]);
 
   const pickService = (name) => {
     setService(name);
@@ -2038,7 +2050,7 @@ function Playbook() {
 
 
 /* ---------------------------------------------------------------- MIS · Activity tracker */
-function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
+function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects, setProspects }) {
   const [selSvc, setSelSvc] = useState(svcs[0]?.id);
   const [view, setView] = useState("service"); // "service" | "pl" | "pipeline"
   const s = svcs.find((x) => x.id === selSvc) || svcs[0];
@@ -2084,9 +2096,6 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
   });
 
   // CRM prospects
-  const [prospects, setProspects] = useState(() =>
-    PROSPECTS.map((p, i) => ({ ...p, id: i + 1, name: "" }))
-  );
   const updP = (id, k, v) => setProspects((prev) => prev.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
   const openVal = prospects.filter((p) => p.stage !== "Won").reduce((a, p) => a + (+p.val || 0), 0);
   const wonVal  = prospects.filter((p) => p.stage === "Won").reduce((a, p) => a + (+p.val || 0), 0);
@@ -2304,16 +2313,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect }) {
 const STAGES = ["Lead", "Contacted", "Meeting", "Proposal", "Won"];
 const STAGECLR = { Lead: "var(--slate)", Contacted: "var(--teal)", Meeting: "var(--brass)", Proposal: "var(--amber)", Won: "var(--green)" };
 
-function CRM({ svcs }) {
-  const [fb, setFb] = useState({ views: 42000, likes: 1850, clicks: 640, leads: 95 });
-  // 5 blank contact slots per service — fill with your real pipeline
-  const [rows, setRows] = useState(() =>
-    SEED.flatMap((s, si) =>
-      Array.from({ length: 5 }, (_, i) => ({
-        id: si * 10 + i + 1, name: "", co: "", svc: s.name, stage: "Lead", val: 0,
-      }))
-    )
-  );
+function CRM({ svcs, rows, setRows, fb, setFb }) {
   const [svcFilter, setSvcFilter] = useState("All services");
   const setF = (k, v) => setFb((f) => ({ ...f, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const engage = fb.views ? fb.likes / fb.views : 0;
