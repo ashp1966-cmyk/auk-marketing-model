@@ -6,7 +6,7 @@ import {
 import {
   Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- brand logo */
@@ -573,6 +573,8 @@ export default function App() {
   );
   const [misIndirect, setMisIndirect] = useState(() => _saved.misIndirect || { hr: 24000, other: 62500 });
   const [cap, setCap] = useState(() => _saved.cap || { hoursPerMonth: 140, touchesPerHour: 2, contentHrsMonth: 40 });
+  const [optBudget, setOptBudget] = useState(() => _saved.optBudget ?? null); // null = "use total marketing budget"
+  const [optObjective, setOptObjective] = useState(() => _saved.optObjective || "profit");
   const [calendar, setCalendar] = useState(() => _saved.calendar || []);
   const [prospects, setProspects] = useState(() =>
     _saved.prospects || PROSPECTS.map((p, i) => ({ ...p, id: i + 1, name: "" }))
@@ -638,10 +640,10 @@ export default function App() {
 
   // Single source of truth for what gets persisted, reused by auto-save, manual save, sign-out, and page-unload
   const buildSaveData = useCallback(() => ({
-    svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb,
+    svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb,
     portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
     savedAt: new Date().toISOString(),
-  }), [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans]);
+  }), [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans]);
 
   const persistNow = useCallback(() => {
     try {
@@ -654,7 +656,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, cap, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans, persistNow]);
+  }, [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans, persistNow]);
 
   // Safety net: always keep a ref to the latest data, and flush it immediately if the
   // tab is closed, refreshed, or backgrounded before the debounce above has a chance to fire.
@@ -720,6 +722,7 @@ export default function App() {
     ["portfolio", "Portfolio", Package],
     ["rev", "Revenue & Margins", TrendingUp],
     ["funnel", "Funnel Plan", Filter],
+    ["opt", "Budget Optimizer", PieChart],
     ["res", "Resources & Budget", Users],
     ["camp", "Campaign & AI", Sparkles],
     ["play", "Playbook", Map],
@@ -770,6 +773,7 @@ export default function App() {
         {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
         {tab === "rev" && <Revenue calc={calc} />}
         {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
+        {tab === "opt" && <BudgetOptimizer svcs={svcs} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />}
         {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
         {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} />}
         {tab === "play" && <Playbook />}
@@ -1382,6 +1386,171 @@ function Funnel({ svcs, setSvcs, fc, budget }) {
 }
 
 /* ---------------------------------------------------------------- resources */
+/* ---------------------------------------------------------------- budget optimizer */
+// Because the funnel's cost model is linear (cost scales proportionally with customers via
+// fixed conversion rates), the cost-per-customer (CPA) for a service is a CONSTANT determined
+// solely by its own channel/conversion settings — independent of how many customers you assume.
+// That means "given a budget, what's the best split across services" has a genuine optimal
+// answer, not just a rough guess: greedily fund the best-return service first, up to its market
+// cap, then the next best, and so on, until the budget runs out. This is a fractional knapsack —
+// greedy-by-ratio is provably optimal here, not a heuristic.
+function calcCPA(s) {
+  const m = s.mkt || {};
+  const cl = m.cl || 0, it = m.it || 0, aw = m.aw || 0;
+  if (!cl || !it || !aw) return 0;
+  return (m.cpm || 0) / (1000 * cl * it * aw) + (m.cpc || 0) / (cl * it) + (m.touches || 0) * (m.cpt || 0) / cl;
+}
+
+function BudgetOptimizer({ svcs, mktCost, optBudget, setOptBudget, optObjective, setOptObjective }) {
+  const activeSvcs = svcs.filter((s) => s.active !== false);
+  const budgetToUse = optBudget ?? mktCost;
+
+  const plan = useMemo(() => {
+    const items = activeSvcs.map((s) => {
+      const cpa = calcCPA(s);
+      const unitGP = s.price * (1 - s.cost);
+      const netPerCust = unitGP - cpa;
+      const efficiency = cpa > 0 ? (optObjective === "profit" ? netPerCust / cpa : 1 / cpa) : -Infinity;
+      return { ...s, cpa, unitGP, netPerCust, efficiency, cap: s.market };
+    });
+    const sorted = [...items].sort((a, b) => b.efficiency - a.efficiency);
+    let remaining = budgetToUse;
+    const alloc = sorted.map((it) => {
+      const skip = it.cpa <= 0 || remaining <= 0 || (optObjective === "profit" && it.efficiency <= 0);
+      if (skip) return { ...it, spend: 0, customers: 0 };
+      const maxSpendForCap = it.cap * it.cpa;
+      const spend = Math.min(remaining, maxSpendForCap);
+      const customers = spend / it.cpa;
+      remaining -= spend;
+      return { ...it, spend, customers };
+    });
+    const rankMap = {};
+    sorted.forEach((it, idx) => { rankMap[it.id] = idx + 1; });
+    const byRank = [...alloc].sort((a, b) => rankMap[a.id] - rankMap[b.id]);
+    const totalSpend = alloc.reduce((a, x) => a + x.spend, 0);
+    const totalCustomers = alloc.reduce((a, x) => a + x.customers, 0);
+    const totalTurnover = alloc.reduce((a, x) => a + x.customers * x.price, 0);
+    const totalGP = alloc.reduce((a, x) => a + x.customers * x.unitGP, 0);
+    const totalMarket = activeSvcs.reduce((a, s) => a + (s.market || 0), 0);
+    return { byRank, rankMap, totalSpend, totalCustomers, totalTurnover, totalGP, totalMarket, leftover: budgetToUse - totalSpend };
+  }, [activeSvcs, budgetToUse, optObjective]);
+
+  // Baseline for comparison: same budget split equally across every active service, no intelligence applied
+  const naive = useMemo(() => {
+    const n = activeSvcs.length || 1;
+    const perSvc = budgetToUse / n;
+    let totalCustomers = 0, totalGP = 0, totalSpend = 0;
+    activeSvcs.forEach((s) => {
+      const cpa = calcCPA(s);
+      if (cpa <= 0) return;
+      const maxSpendForCap = s.market * cpa;
+      const spend = Math.min(perSvc, maxSpendForCap);
+      const customers = spend / cpa;
+      totalCustomers += customers; totalSpend += spend;
+      totalGP += customers * s.price * (1 - s.cost);
+    });
+    return { totalCustomers, totalGP, totalSpend };
+  }, [activeSvcs, budgetToUse]);
+
+  const custUplift = naive.totalCustomers ? (plan.totalCustomers - naive.totalCustomers) / naive.totalCustomers : 0;
+  const gpUplift = naive.totalGP ? (plan.totalGP - naive.totalGP) / naive.totalGP : 0;
+  const shareAchieved = plan.totalMarket ? plan.totalCustomers / plan.totalMarket : 0;
+
+  return (
+    <>
+      <div className="sechead">
+        <div><div className="eyebrow">Smart allocation</div><h2>Budget optimizer</h2></div>
+        <div className="sub">Give it a budget, and it works out the smartest way to spend it — which services to fund first, and how far the money goes toward market share.</div>
+      </div>
+
+      <div className="note" style={{ marginBottom: 16 }}>
+        <b>How it decides:</b> each service has a fixed cost to acquire one customer, set entirely by its own funnel settings (channel, conversion rates, costs) on the Funnel Plan tab. The optimizer ranks every active service by return per rand spent, then funds the best one first — right up to the size of its whole market — before moving to the next. Nothing is split evenly; money goes where it works hardest.
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="grid g3">
+          <div className="field">
+            <label>Budget to allocate (R)</label>
+            <input className="inp num" value={budgetToUse} onChange={(e) => setOptBudget(parseFloat(e.target.value) || 0)} />
+            <span className="hint" style={{ fontSize: 10.5 }}>Defaults to your total marketing budget — override to test scenarios</span>
+          </div>
+          <div className="field">
+            <label>Optimise for</label>
+            <select className="sel" value={optObjective} onChange={(e) => setOptObjective(e.target.value)}>
+              <option value="profit">Maximum profit</option>
+              <option value="customers">Maximum market share (customers won)</option>
+            </select>
+            <span className="hint" style={{ fontSize: 10.5 }}>{optObjective === "profit" ? "Skips any service where acquisition would lose money" : "Chases share even where margins are thin"}</span>
+          </div>
+          {optBudget !== null && (
+            <div className="field" style={{ justifyContent: "flex-end" }}>
+              <button className="btn ghost sm" onClick={() => setOptBudget(null)} style={{ marginTop: 22 }}>Reset to marketing budget</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid g4" style={{ marginBottom: 16 }}>
+        <Kpi label="Customers won" val={Math.round(plan.totalCustomers).toLocaleString()} foot={`${pct(shareAchieved)} of combined addressable market`} fill={Math.min(shareAchieved * 3, 1)} accent="var(--brass)" />
+        <Kpi label="Turnover generated" val={Rk(plan.totalTurnover)} foot={`${Rk(plan.totalGP)} gross profit`} fill={0.7} accent="var(--teal)" />
+        <Kpi label="vs even split · customers" val={(custUplift >= 0 ? "+" : "") + pct(custUplift)} foot="Smart allocation vs naive equal split" fill={Math.min(Math.abs(custUplift) * 2, 1)} accent={custUplift >= 0 ? "var(--green)" : "var(--red)"} />
+        <Kpi label="vs even split · profit" val={(gpUplift >= 0 ? "+" : "") + pct(gpUplift)} foot="Smart allocation vs naive equal split" fill={Math.min(Math.abs(gpUplift) * 2, 1)} accent={gpUplift >= 0 ? "var(--green)" : "var(--red)"} />
+      </div>
+
+      {plan.leftover > 1 && (
+        <div className="note" style={{ marginBottom: 16, borderColor: "var(--amber)" }}>
+          <b style={{ color: "var(--amber)" }}>{Rk(plan.leftover)} left unallocated.</b> {optObjective === "profit"
+            ? "Every remaining rand would go to a service where acquisition costs more than the profit it returns — better held back than spent."
+            : "Every active service is already funded to 100% of its addressable market — there's nowhere left for the budget to go."}
+        </div>
+      )}
+
+      <div className="divh"><h3>Allocation, best opportunity first</h3><div className="ln" /></div>
+      <div className="card" style={{ overflowX: "auto" }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Rank</th><th>Service</th><th>Cost / customer</th><th>Spend allocated</th>
+              <th>Customers won</th><th>Share of its market</th><th>Turnover</th><th>Gross profit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plan.byRank.map((it) => {
+              const share = it.market ? it.customers / it.market : 0;
+              const funded = it.spend > 0;
+              return (
+                <tr key={it.id} style={{ opacity: funded ? 1 : 0.5 }}>
+                  <td>
+                    <span className="pill" style={{ background: funded ? "rgba(201,162,75,.15)" : "var(--navy-700)", color: funded ? "var(--brass)" : "var(--slate)" }}>#{plan.rankMap[it.id]}</span>
+                  </td>
+                  <td className="svc">{it.name}</td>
+                  <td className="mono" style={{ color: it.netPerCust >= 0 ? "var(--slate)" : "var(--red)" }}>{Rk(it.cpa)}</td>
+                  <td className="mono">{funded ? Rk(it.spend) : "—"}</td>
+                  <td className="mono">{funded ? Math.round(it.customers).toLocaleString() : "0"}</td>
+                  <td className="mono" style={{ color: "var(--teal)" }}>{funded ? pct(share) : "—"}</td>
+                  <td className="mono">{funded ? Rk(it.customers * it.price) : "—"}</td>
+                  <td className="mono" style={{ color: it.netPerCust >= 0 ? "var(--green)" : "var(--red)" }}>{funded ? Rk(it.customers * it.unitGP) : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={3}>Total</td>
+              <td className="mono">{Rk(plan.totalSpend)}</td>
+              <td className="mono">{Math.round(plan.totalCustomers).toLocaleString()}</td>
+              <td></td>
+              <td className="mono">{Rk(plan.totalTurnover)}</td>
+              <td className="mono">{Rk(plan.totalGP)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div className="hint" style={{ marginTop: 10 }}>Rank #1 gets funded first, right up to its full market size, before rank #2 gets a rand — that's what makes this an optimal split rather than a guess. Dimmed rows received nothing this round.</div>
+      </div>
+    </>
+  );
+}
+
 function Resources({ budget, setBudget, calc, mktCost, fc, cap, setCap }) {
   const set = (k, v) => setBudget((b) => ({ ...b, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const setC = (k, v) => setCap((c) => ({ ...c, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
