@@ -497,6 +497,43 @@ function initPortfolioItems(saved) {
   return result;
 }
 
+/* ---------------------------------------------------------------- crash safety net */
+// A React error boundary MUST be a class component — there's no hook equivalent.
+// Wraps each tab's content so a bug in one tab can never take down the whole app:
+// the top bar and navigation stay alive, and switching tabs remounts cleanly.
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("AUKPILOT tab crashed:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="card" style={{ margin: "20px 0", borderColor: "var(--red)" }}>
+          <div className="eyebrow" style={{ color: "var(--red)", marginBottom: 8 }}>Something went wrong displaying this tab</div>
+          <div style={{ fontSize: 14, color: "var(--ink)", marginBottom: 10 }}>
+            This one screen hit an error — nothing else is affected, and your data is safe (it auto-saves as you go). Try another tab from the bar above, or reload.
+          </div>
+          <button className="btn ghost sm" onClick={() => window.location.reload()}>Reload app</button>
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--slate)" }}>Technical details</summary>
+            <div style={{ fontFamily: "monospace", fontSize: 11.5, color: "var(--slate)", marginTop: 8, whiteSpace: "pre-wrap" }}>
+              {String(this.state.error?.message || this.state.error)}
+            </div>
+          </details>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /* ---------------------------------------------------------------- login gate */
 function Login({ onOk }) {
   const [u, setU] = useState("");
@@ -768,18 +805,20 @@ export default function App() {
       </div>
 
       <div className="wrap">
-        {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
-        {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} onAddService={addService} onToggleActive={toggleServiceActive} onDeleteService={deleteService} />}
-        {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
-        {tab === "rev" && <Revenue calc={calc} />}
-        {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
-        {tab === "opt" && <BudgetOptimizer svcs={svcs} fc={funnelCalc} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />}
-        {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
-        {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} />}
-        {tab === "play" && <Playbook />}
-        {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
-        {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} />}
-        {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
+        <ErrorBoundary key={tab}>
+          {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
+          {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} onAddService={addService} onToggleActive={toggleServiceActive} onDeleteService={deleteService} />}
+          {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
+          {tab === "rev" && <Revenue calc={calc} />}
+          {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
+          {tab === "opt" && <BudgetOptimizer svcs={svcs} fc={funnelCalc} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />}
+          {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
+          {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} />}
+          {tab === "play" && <Playbook />}
+          {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
+          {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} />}
+          {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
+        </ErrorBoundary>
       </div>
     </div>
   );
