@@ -18,11 +18,11 @@ const LOGO_SRC = "data:image/png;base64," + LOGO_B64;
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 :root{
-  --navy-900:#0A1628; --navy-850:#0a1c2e; --navy-800:#0d2338; --navy-700:#123049;
-  --navy-600:#1b405e; --line:#1f4867;
-  --brass:#3D9BC4; --brass-hi:#8EC5DC;
-  --ink:#eaf1f8; --slate:#8EC5DC; --slate-dim:#6a93ab; --wash:#C6DDEC;
-  --teal:#2BAABF; --green:#46b98a; --amber:#e0a83e; --red:#d97b7b;
+  --navy-900:#EAF3F8; --navy-850:#DCEBF3; --navy-800:#FFFFFF; --navy-700:#C6DDEC;
+  --navy-600:#B8D4E3; --line:#A9CFE0;
+  --brass:#3D9BC4; --brass-hi:#1D6E8E;
+  --ink:#0A1628; --slate:#4D7290; --slate-dim:#7C99AF; --wash:#C6DDEC;
+  --teal:#1D8A9C; --green:#16A34A; --amber:#D97706; --red:#DC2626;
 }
 *{box-sizing:border-box}
 .aukm{font-family:'Inter',system-ui,sans-serif;background:var(--navy-900);color:var(--ink);min-height:100vh;line-height:1.5;}
@@ -35,7 +35,7 @@ const CSS = `
 .topbar{display:flex;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--navy-850),var(--navy-900));position:sticky;top:0;z-index:20;flex-wrap:wrap;}
 .mark{height:38px;width:auto;display:flex;align-items:center;justify-content:center;flex:none;}
 .mark img{height:100%;width:auto;object-fit:contain;display:block;}
-.brandT{font-size:24px;font-weight:700;line-height:1;text-transform:uppercase;letter-spacing:.06em;color:var(--wash);}
+.brandT{font-size:24px;font-weight:700;line-height:1;text-transform:uppercase;letter-spacing:.06em;color:var(--brass);}
 .brandS{font-size:11.5px;color:var(--slate);letter-spacing:.14em;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;}
 .plimsoll{height:1px;background:var(--line);position:relative;margin:0;}
 .plimsoll::before{content:"";position:absolute;left:50%;top:-4px;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--brass);background:var(--navy-900);transform:translateX(-50%);}
@@ -48,7 +48,7 @@ const CSS = `
 
 .wrap{max-width:1200px;margin:0 auto;padding:26px 24px 80px;}
 .sechead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:6px 0 18px;flex-wrap:wrap;}
-.sechead h2{font-size:30px;font-weight:700;text-transform:uppercase;color:var(--wash);}
+.sechead h2{font-size:30px;font-weight:700;text-transform:uppercase;color:var(--brass);}
 .sub{color:var(--slate);font-size:14px;max-width:60ch;}
 
 .card{background:var(--navy-800);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
@@ -89,7 +89,7 @@ const CSS = `
 .btn:hover{background:var(--brass-hi);}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 .btn.ghost{background:transparent;color:var(--brass);border:1px solid var(--brass);}
-.btn.ghost:hover{background:rgba(201,162,75,.12);}
+.btn.ghost:hover{background:rgba(61,155,196,.12);}
 .btn.sm{padding:7px 12px;font-size:13px;}
 .iconbtn{background:transparent;border:0;color:var(--slate-dim);cursor:pointer;padding:4px;border-radius:6px;}
 .iconbtn:hover{color:var(--red);background:var(--navy-700);}
@@ -100,11 +100,11 @@ const CSS = `
 .hint{font-size:12.5px;color:var(--slate-dim);}
 .note{background:var(--navy-850);border:1px dashed var(--line);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--slate);}
 .divh{display:flex;align-items:center;gap:10px;margin:26px 0 14px;}
-.divh h3{font-size:20px;text-transform:uppercase;font-weight:700;color:var(--wash);}
+.divh h3{font-size:20px;text-transform:uppercase;font-weight:700;color:var(--brass);}
 .divh .ln{flex:1;height:1px;background:var(--line);}
 
 /* login */
-.loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% -20%,#123049 0%,#071523 60%);}
+.loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% -20%,#FFFFFF 0%,#DCEBF3 60%);}
 .loginbox{width:100%;max-width:400px;background:var(--navy-800);border:1px solid var(--line);border-radius:16px;padding:34px 30px;}
 .loginbox .mark{height:64px;width:auto;margin:0 auto 14px;}
 .loginT{text-align:center;font-size:26px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
@@ -131,7 +131,7 @@ const Rk = (n) => {
 };
 const pct = (n) => (n * 100).toFixed(1) + "%";
 const marginColor = (m) => (m >= 0.4 ? "var(--green)" : m >= 0.25 ? "var(--amber)" : "var(--red)");
-const BARCLR = ["#3D9BC4", "#2BAABF", "#8EC5DC", "#6f9bd1", "#46b98a", "#b98acb"];
+const BARCLR = ["#3D9BC4", "#2BAABF", "#5B9BC9", "#6f9bd1", "#16A34A", "#b98acb"];
 
 /* seed inputs — grounded in real SA data + AUK's own targeting notes, all editable.
    Market anchors: TNPA ~8,630 vessel arrivals FY2025/26 (+9% y/y); ~304m tonnes throughput (SAnews, May 2026).
@@ -857,9 +857,9 @@ function Dashboard({ calc, mktCost }) {
       <div className="card">
         <ResponsiveContainer width="100%" height={330}>
           <BarChart data={revData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1f4867" vertical={false} />
-            <XAxis dataKey="year" stroke="#8ba3bd" fontSize={13} />
-            <YAxis stroke="#8ba3bd" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#A9CFE0" vertical={false} />
+            <XAxis dataKey="year" stroke="#4D7290" fontSize={13} />
+            <YAxis stroke="#4D7290" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
             <Tooltip contentStyle={ttStyle} formatter={(v) => R(v)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {activeRows.map((r, i) => (
@@ -873,9 +873,9 @@ function Dashboard({ calc, mktCost }) {
       <div className="card">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={marginData} layout="vertical" margin={{ left: 8, right: 24 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1f4867" horizontal={false} />
-            <XAxis type="number" stroke="#8ba3bd" fontSize={12} domain={[0, 100]} tickFormatter={(v) => v + "%"} />
-            <YAxis type="category" dataKey="name" stroke="#8ba3bd" fontSize={12} width={150} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#A9CFE0" horizontal={false} />
+            <XAxis type="number" stroke="#4D7290" fontSize={12} domain={[0, 100]} tickFormatter={(v) => v + "%"} />
+            <YAxis type="category" dataKey="name" stroke="#4D7290" fontSize={12} width={150} />
             <Tooltip contentStyle={ttStyle} formatter={(v) => v + "%"} />
             <Bar dataKey="margin" radius={[0, 4, 4, 0]}>
               {marginData.map((d, i) => <Cell key={i} fill={marginColor(d.margin / 100)} />)}
@@ -889,7 +889,7 @@ function Dashboard({ calc, mktCost }) {
     </>
   );
 }
-const ttStyle = { background: "#0d2338", border: "1px solid #1f4867", borderRadius: 8, color: "#eaf1f8", fontSize: 13 };
+const ttStyle = { background: "#FFFFFF", border: "1px solid #A9CFE0", borderRadius: 8, color: "#0A1628", fontSize: 13 };
 
 function Select({ label, val, set, opts }) {
   return (
@@ -970,7 +970,7 @@ function Inputs({ svcs, setSvcs, onAddService, onToggleActive, onDeleteService }
                       title={isActive ? "Click to suspend this service" : "Click to reactivate this service"}
                       style={{
                         border: "none", cursor: "pointer",
-                        background: isActive ? "rgba(70,185,138,.15)" : "rgba(217,123,123,.15)",
+                        background: isActive ? "rgba(22,163,74,.15)" : "rgba(220,38,38,.15)",
                         color: isActive ? "var(--green)" : "var(--red)",
                       }}
                     >
@@ -1224,13 +1224,13 @@ function Revenue({ calc }) {
       <div className="card">
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={YEARS.map((y, i) => ({ year: y, Turnover: Math.round(calc.totals[i].turnover), "Gross profit": Math.round(calc.totals[i].gp) }))}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1f4867" vertical={false} />
-            <XAxis dataKey="year" stroke="#8ba3bd" fontSize={13} />
-            <YAxis stroke="#8ba3bd" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#A9CFE0" vertical={false} />
+            <XAxis dataKey="year" stroke="#4D7290" fontSize={13} />
+            <YAxis stroke="#4D7290" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
             <Tooltip contentStyle={ttStyle} formatter={(v) => R(v)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line type="monotone" dataKey="Turnover" stroke="#3D9BC4" strokeWidth={2.5} dot={{ r: 4 }} />
-            <Line type="monotone" dataKey="Gross profit" stroke="#46b98a" strokeWidth={2.5} dot={{ r: 4 }} />
+            <Line type="monotone" dataKey="Gross profit" stroke="#16A34A" strokeWidth={2.5} dot={{ r: 4 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -1583,7 +1583,7 @@ function BudgetOptimizer({ svcs, fc, mktCost, optBudget, setOptBudget, optObject
               const fullyFunded = !plan.shortfall || it.committedSpend >= it.requiredSpend - 0.5;
               return (
                 <tr key={it.id} style={{ opacity: it.customers > 0 ? 1 : 0.5 }}>
-                  <td><span className="pill" style={{ background: "rgba(201,162,75,.15)", color: "var(--brass)" }}>#{plan.rankMap[it.id]}</span></td>
+                  <td><span className="pill" style={{ background: "rgba(61,155,196,.15)", color: "var(--brass)" }}>#{plan.rankMap[it.id]}</span></td>
                   <td className="svc">{it.name}</td>
                   <td className="mono" style={{ color: it.netPerCust >= 0 ? "var(--slate)" : "var(--red)" }}>{Rk(it.cpa)}</td>
                   <td className="mono" style={{ color: "var(--teal)" }}>{Math.round(it.target).toLocaleString()}</td>
@@ -2051,13 +2051,13 @@ Return exactly 5 trends, ranked most important first.`;
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 10, color: "var(--green)" }}>Focus · low capex, high margin</div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                {FOCUS_AVOID.focus.map((f) => <span key={f} className="pill" style={{ background: "rgba(70,185,138,.12)", color: "var(--green)" }}>{f}</span>)}
+                {FOCUS_AVOID.focus.map((f) => <span key={f} className="pill" style={{ background: "rgba(22,163,74,.12)", color: "var(--green)" }}>{f}</span>)}
               </div>
             </div>
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 10, color: "var(--red)" }}>Avoid / minimise</div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                {FOCUS_AVOID.avoid.map((f) => <span key={f} className="pill" style={{ background: "rgba(217,123,123,.12)", color: "var(--red)" }}>{f}</span>)}
+                {FOCUS_AVOID.avoid.map((f) => <span key={f} className="pill" style={{ background: "rgba(220,38,38,.12)", color: "var(--red)" }}>{f}</span>)}
               </div>
             </div>
           </div>
@@ -2077,7 +2077,7 @@ Return exactly 5 trends, ranked most important first.`;
                       <td className="svc" style={{ whiteSpace: "normal" }}>{s.name}</td>
                       <td style={{ textAlign: "left" }}><span className="tag">{m.model}</span></td>
                       <td style={{ textAlign: "left", color: "var(--slate)", whiteSpace: "normal", fontSize: 13 }}>{m.csf}</td>
-                      <td><span className="pill" style={{ background: "rgba(70,185,138,.12)", color: "var(--green)" }}>{m.prospects}</span></td>
+                      <td><span className="pill" style={{ background: "rgba(22,163,74,.12)", color: "var(--green)" }}>{m.prospects}</span></td>
                       <td style={{ textAlign: "left", color: "var(--slate)", whiteSpace: "normal", fontSize: 13 }}>{m.action}</td>
                     </tr>
                   );
@@ -2551,9 +2551,9 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
           <div className="card">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={monthlyAgg} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f4867" vertical={false} />
-                <XAxis dataKey="month" stroke="#8ba3bd" fontSize={12} />
-                <YAxis stroke="#8ba3bd" fontSize={11} tickFormatter={(v) => "R" + (v / 1000).toFixed(0) + "k"} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#A9CFE0" vertical={false} />
+                <XAxis dataKey="month" stroke="#4D7290" fontSize={12} />
+                <YAxis stroke="#4D7290" fontSize={11} tickFormatter={(v) => "R" + (v / 1000).toFixed(0) + "k"} />
                 <Tooltip contentStyle={ttStyle} formatter={(v) => R(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="projGP" name="Projected GP" fill="var(--brass)" opacity={0.7} radius={[3,3,0,0]} />
