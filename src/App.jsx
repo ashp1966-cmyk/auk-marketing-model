@@ -42,9 +42,9 @@ const CSS = `
 
 /* nav */
 .nav{display:flex;gap:2px;padding:8px 16px;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--navy-850);}
-.navb{display:flex;align-items:center;gap:8px;padding:9px 14px;border:0;background:transparent;color:var(--slate);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.08em;font-size:15px;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:.15s;}
+.navb{display:flex;align-items:center;gap:8px;padding:9px 14px;border:0;background:transparent;color:var(--ink);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.08em;font-size:15px;font-weight:800;cursor:pointer;border-radius:8px;white-space:nowrap;transition:.15s;}
 .navb:hover{color:var(--ink);background:var(--navy-800);}
-.navb.on{color:var(--navy-900);background:var(--brass);}
+.navb.on{color:var(--navy-900);background:var(--brass);font-weight:800;}
 
 .wrap{max-width:1200px;margin:0 auto;padding:26px 24px 80px;}
 .sechead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:6px 0 18px;flex-wrap:wrap;}
