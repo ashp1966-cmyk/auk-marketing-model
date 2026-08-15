@@ -1159,7 +1159,7 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
 
           {p?.segsCust && (
             <div className="card" style={{ marginBottom: 16 }}>
-              <div className="eyebrow" style={{ marginBottom: 10 }}>Freight-forwarding segments</div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>Target segments</div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
                 {p.segsCust.map((c) => <span key={c} className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>{c}</span>)}
               </div>
@@ -3041,16 +3041,18 @@ Return up to 8 candidates, best fits first.`;
                   <span style={{ color: "var(--slate-dim)" }}>No contact email found — will need manual research before outreach.</span>
                 )}
               </div>
-              {p.contact_email && (
-                (draftsByProspect[p.id] || []).length > 0 ? (
-                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--teal)" }}>
-                    <Mail size={11} style={{ verticalAlign: -1 }} /> Draft{draftsByProspect[p.id].length > 1 ? "s" : ""} in review queue
-                  </span>
-                ) : (
-                  <button className="btn ghost sm" onClick={() => draftOutreach(p)} disabled={draftingId === p.id}>
-                    {draftingId === p.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Mail size={14} /> Draft outreach email</>}
-                  </button>
-                )
+              {(draftsByProspect[p.id] || []).length > 0 ? (
+                <span className="pill" style={{ background: "var(--navy-700)", color: "var(--teal)" }}>
+                  <Mail size={11} style={{ verticalAlign: -1 }} /> Draft{draftsByProspect[p.id].length > 1 ? "s" : ""} in review queue
+                </span>
+              ) : p.contact_email && p.verified ? (
+                <button className="btn ghost sm" onClick={() => draftOutreach(p)} disabled={draftingId === p.id}>
+                  {draftingId === p.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Mail size={14} /> Draft outreach email</>}
+                </button>
+              ) : (
+                // Not a transient failure — api/outreach.js permanently rejects drafting without a
+                // verified contact, so don't offer a button that would just fail on click.
+                <span className="hint" style={{ color: "var(--slate-dim)" }}>Needs a verified contact before drafting</span>
               )}
             </div>
           ))}
