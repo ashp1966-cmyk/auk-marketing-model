@@ -8,7 +8,7 @@ import {
 import {
   Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search, Mail, Check,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- brand logo */
@@ -141,7 +141,7 @@ const BARCLR = ["#3D9BC4", "#2BAABF", "#5B9BC9", "#6f9bd1", "#16A34A", "#b98acb"
    Meta/Google for mass SA training (cheaper). Rates from 2025/26 B2B benchmarks. Prices = calibrate w/ AUK actuals. */
 const SEED = [
   { id: 1, name: "Logistics", market: 4000, price: 40000, cost: 0.72, orders: [60, 120, 200], active: true,
-    mkt: { audience: "Exporters, importers, freight forwarders & traders", channel: "LinkedIn", geo: "SA + cross-border",
+    mkt: { audience: "Exporters, importers & traders", channel: "LinkedIn", geo: "SA + cross-border",
       aw: 0.020, it: 0.05, cl: 0.12, cpm: 150, cpc: 15, touches: 4, cpt: 250,
       segments: ["Container & Air · Breakbulk · Bulk (Export/Import)", "Modes: Road · Rail · Water · Air", "Transportation · Warehousing · Value-added"] } },
   { id: 2, name: "Ship inspection services", market: 4000, price: 55000, cost: 0.45, orders: [80, 160, 240], active: true,
@@ -340,7 +340,14 @@ const ROADMAP_SEED = [
   { id: 10, phase: "Phase 3 (18–36 mo)", item: "Subscription digital services; training academy across Africa; tech partnerships; AUK AI Lab", status: "Pending" },
 ];
 
-/* Product/service portfolio — from AUK's course catalogue and consulting service map */
+/* Product/service portfolio — from AUK's course catalogue and consulting service map.
+   Segment-tagging principle: for operational services (Logistics, Ship inspection, Cargo
+   inspection, etc.) segments must be the END USER who needs the service performed, never a
+   peer company that provides the same kind of service — a freight forwarder is a competitor
+   for Logistics, not a customer of it, same logic applies to e.g. other inspection firms for
+   Ship/Cargo inspection. AI-Driven Marketing Consulting is the deliberate exception: it's
+   horizontal and applicable to any business regardless of industry, so its segment stays
+   broad ("Any industry") rather than naming an operational end-user category. */
 const PORTFOLIO = {
   6: /* Training & skills development */ {
     note: "AUK's live course catalogue. Seafarer maritime courses feed the shore-inspector pipeline; SMME courses cross-sell business & AI services.",
@@ -405,6 +412,7 @@ const PORTFOLIO = {
       { title: "Marketing & digital", items: [
         { name: "Marketing strategy development & implementation", seg: "Any industry" },
         { name: "Social media strategy development & implementation", seg: "Any industry" },
+        { name: "AI-Driven Marketing Consulting", seg: "Any industry", usp: "Custom-built AI marketing system that sets a growth target, calculates the exact cost to win it, allocates budget to the highest-return opportunities, and feeds qualified leads straight into a CRM — the same platform running AUK's own growth today. Best fit: SMEs and growth-stage companies without an in-house marketing function." },
       ] },
       { title: "Skills & technology", items: [
         { name: "Skill development strategy", seg: "Education · Any industry" },
@@ -452,7 +460,7 @@ const PORTFOLIO = {
   },
   1: /* Logistics */ {
     note: "Delivered through the AUK agent & provider network (Imperial, CWT, transporters, stevedores) — a referral-led channel rather than paid ads.",
-    segsCust: ["Exporters", "Importers", "Freight forwarders", "Traders"],
+    segsCust: ["Exporters", "Importers", "Traders"],
     segsCargo: ["Container & Air", "Breakbulk", "Bulk (Export/Import)"],
     landingPrice: true,
     groups: [
@@ -2678,6 +2686,11 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
 // persistence — runs/candidates are tenant-scoped rows in Neon (via /api/prospects),
 // not a JSON blob in tenant_data, so results survive independent of the rest of the
 // app's autosave and are ready for HubSpot sync in a later checkpoint.
+// Standing cross-sell, included in every drafted email regardless of which service the
+// prospect was originally matched against — AUK's AI-driven marketing system is a pitch
+// for every prospect's own growth, not tied to any one service line or prospecting run.
+const AI_MARKETING_CROSS_SELL_PROMPT = `Also include a separate short paragraph (2-3 sentences MAXIMUM, no more) pitching AUK's AI-driven marketing consulting service as a secondary, standing offer — this is a cross-sell included in every outreach email, independent of the service above. Frame it around the prospect's own growth: AUK has built an advanced, AI-driven marketing system, custom-built per client, designed to grow market share and profitability — the outcome is the pitch, not the sophistication of the system. Include exactly ONE credible technical highlight, phrased close to this: "the same AI system sets a growth target, calculates exactly what it costs to win it, intelligently allocates budget to the best opportunities, and feeds qualified leads straight into a CRM — built on the same platform running AUK's own growth today." Do NOT explain the full pipeline (funnel stages, budget optimizer, capacity checks, etc.) — that level of detail belongs in a follow-up or one-pager, not this first-contact email`;
+
 function Prospecting({ svcs }) {
   const { getToken } = useAuth();
   const activeSvcs = svcs.filter((s) => s.active !== false);
@@ -2691,6 +2704,124 @@ function Prospecting({ svcs }) {
   const [err, setErr] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+
+  const [drafts, setDrafts] = useState([]);
+  const [draftsLoaded, setDraftsLoaded] = useState(false);
+  const [draftingId, setDraftingId] = useState(null);
+  const [draftErr, setDraftErr] = useState("");
+  const [approvingId, setApprovingId] = useState(null);
+
+  const loadDrafts = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/outreach", { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Failed to load drafts");
+      const json = await res.json();
+      setDrafts(json.drafts || []);
+    } catch (e) {
+      // Non-fatal — drafting still works, it just won't show the queue until this succeeds.
+    } finally {
+      setDraftsLoaded(true);
+    }
+  }, [getToken]);
+
+  useEffect(() => { loadDrafts(); }, [loadDrafts]);
+
+  const draftsByProspect = drafts.reduce((m, d) => {
+    (m[d.prospect_id] ??= []).push(d);
+    return m;
+  }, {});
+
+  const draftOutreach = async (prospect) => {
+    if (!prospect.contact_email) return;
+    setDraftingId(prospect.id); setDraftErr("");
+    const draftSvc = activeSvcs.find((s) => s.name === run?.service_name) || service;
+    const segments = draftSvc?.mkt?.segments || [];
+    // A peer prospect (its own core business overlaps with the service being pitched — e.g. a
+    // freight forwarder flagged during Logistics prospecting) is a poor fit for a direct pitch
+    // of that service. Lead with the AI marketing consulting cross-sell as the PRIMARY pitch
+    // instead, rather than forcing an ill-fitting core-service pitch first.
+    const prompt = prospect.is_peer ? `You are a business development rep for AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com), writing a cold outreach email to a company whose own core business overlaps with AUK's "${draftSvc?.name || run?.service_name || ""}" service line — so DO NOT pitch that service to them, they're a peer/competitor in it, not a customer.
+
+Prospect company: ${prospect.company_name}
+Prospect contact: ${prospect.contact_name || "(no named contact — address the company generally)"}
+Why this prospect was originally flagged (for context only — do not pitch this): ${prospect.rationale || "(not specified)"}
+
+Instead, lead with AUK's AI-driven marketing consulting service as the PRIMARY pitch. Requirements:
+- ${AI_MARKETING_CROSS_SELL_PROMPT}, except here it is the main pitch of the email, not a secondary paragraph — open with it, personalized to this company's own growth given its scale/position (inferred from the context above), not to AUK's core services.
+- Do not pitch or describe AUK's "${draftSvc?.name || run?.service_name || ""}" service anywhere in this email.
+- End with a low-friction call to action (e.g. a short call).
+- Professional, warm, concise — no more than ~150 words in the body.
+- Do not invent any facts about the prospect beyond what's given above.
+
+Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
+{"subject":"...","body":"..."}` : `You are a business development rep for AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com), writing a cold outreach email for the service "${draftSvc?.name || run?.service_name || ""}".
+
+Prospect company: ${prospect.company_name}
+Prospect contact: ${prospect.contact_name || "(no named contact — address the company generally)"}
+Why this prospect was flagged as a fit: ${prospect.rationale || "(not specified)"}
+Concrete capabilities within this service (pick the ONE most relevant to this prospect): ${segments.length ? segments.join(" · ") : "(none listed — name the service itself concretely, not just its category)"}
+
+Write a short, genuinely personalized cold email (not generic boilerplate). Requirements:
+- Name ONE concrete capability from the list above (or the service itself if no list is given) and tie it directly to the specific reason this company is a fit — e.g. what AUK would actually do for them, not an abstract description like "specialist logistics services tailored to the maritime environment."
+- Do not describe AUK in vague, generic terms — be specific about the one thing being pitched.
+- ${AI_MARKETING_CROSS_SELL_PROMPT}
+- End with a low-friction call to action (e.g. a short call).
+- Professional, warm, concise — no more than ~150 words in the body overall, INCLUDING the cross-sell paragraph above.
+- Do not invent any facts about the prospect beyond what's given above.
+
+Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
+{"subject":"...","body":"..."}`;
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 700,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(text.slice(text.indexOf("{")));
+      if (!parsed.subject || !parsed.body) throw new Error("Incomplete draft");
+
+      const saveRes = await fetch("/api/outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prospectId: prospect.id, subject: parsed.subject, body: parsed.body }),
+      });
+      const saveJson = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saveJson.error || "Save failed");
+
+      setDrafts((prev) => [saveJson.draft, ...prev]);
+    } catch (e) {
+      setDraftErr("Couldn't draft this email — try again in a moment.");
+    } finally {
+      setDraftingId(null);
+    }
+  };
+
+  const approveDraft = async (draftId) => {
+    setApprovingId(draftId);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/outreach", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: draftId, action: "approve" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Approve failed");
+      setDrafts((prev) => prev.map((d) => (d.id === draftId ? json.draft : d)));
+    } catch (e) {
+      setDraftErr("Couldn't approve this draft — try again in a moment.");
+    } finally {
+      setApprovingId(null);
+    }
+  };
 
   const loadRuns = useCallback(async () => {
     try {
@@ -2727,9 +2858,10 @@ For each candidate, try to find a real, verifiable named contact (e.g. a manager
 - NEVER invent or guess a plausible-looking email address. If you cannot verify one from search results, leave contact_email null and verified false.
 - Only set verified true if you found a real named contact AND a real email, both from search results.
 - A generic company website/contact-us email you found via search is fine to use as contact_email with verified true, even without a named contact — but never fabricate one.
+- Set is_peer true if the candidate's OWN core business overlaps with or competes in "${service.name}" itself (e.g. it is itself a provider of this same kind of service, not a buyer of it) — such a company is still a valid prospect for AUK's separate AI-driven marketing consulting offering, but is a poor fit for a direct "${service.name}" pitch since it's a peer, not a customer. Set is_peer false for genuine customers/buyers of this service.
 
 Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
-{"candidates":[{"company_name":"...","contact_name":"... or null","contact_email":"... or null","verified":true|false,"rationale":"1-2 sentences on why this company is a good prospect for this service"}]}
+{"candidates":[{"company_name":"...","contact_name":"... or null","contact_email":"... or null","verified":true|false,"is_peer":true|false,"rationale":"1-2 sentences on why this company is a good prospect for this service"}]}
 Return up to 8 candidates, best fits first.`;
     try {
       const token = await getToken();
@@ -2893,10 +3025,15 @@ Return up to 8 candidates, best fits first.`;
                   <span className="pill" style={{ background: "var(--navy-700)", color: p.hubspot_id ? "var(--teal)" : "var(--slate-dim)" }}>
                     {p.hubspot_id ? "In HubSpot" : "Not synced"}
                   </span>
+                  {p.is_peer && (
+                    <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>
+                      Peer — AI marketing cross-sell only
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ fontSize: 13.5, color: "var(--slate)", marginBottom: 10 }}>{p.rationale}</div>
-              <div style={{ fontSize: 13.5 }}>
+              <div style={{ fontSize: 13.5, marginBottom: p.contact_email ? 10 : 0 }}>
                 {p.contact_name && <span style={{ marginRight: 14 }}><b style={{ color: "var(--teal)" }}>Contact:</b> {p.contact_name}</span>}
                 {p.contact_email ? (
                   <span><b style={{ color: "var(--teal)" }}>Email:</b> {p.contact_email}</span>
@@ -2904,9 +3041,51 @@ Return up to 8 candidates, best fits first.`;
                   <span style={{ color: "var(--slate-dim)" }}>No contact email found — will need manual research before outreach.</span>
                 )}
               </div>
+              {p.contact_email && (
+                (draftsByProspect[p.id] || []).length > 0 ? (
+                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--teal)" }}>
+                    <Mail size={11} style={{ verticalAlign: -1 }} /> Draft{draftsByProspect[p.id].length > 1 ? "s" : ""} in review queue
+                  </span>
+                ) : (
+                  <button className="btn ghost sm" onClick={() => draftOutreach(p)} disabled={draftingId === p.id}>
+                    {draftingId === p.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Mail size={14} /> Draft outreach email</>}
+                  </button>
+                )
+              )}
             </div>
           ))}
-          <div className="hint">AI-generated from live web results — verify specifics before any outreach. Email drafting and sending come in later checkpoints.</div>
+          <div className="hint">AI-generated from live web results — verify specifics before any outreach. Sending comes in a later checkpoint.</div>
+        </>
+      )}
+
+      {draftErr && <div className="card" style={{ marginBottom: 16, borderColor: "var(--red)" }}><span style={{ color: "var(--red)", fontSize: 13 }}>{draftErr}</span></div>}
+
+      {draftsLoaded && drafts.length > 0 && (
+        <>
+          <div className="divh"><h3>Outreach review queue</h3><div className="ln" /><span className="tag">{drafts.filter((d) => !d.approved_by).length} awaiting review</span></div>
+          <div className="note" style={{ marginBottom: 16 }}>
+            Nothing here sends automatically. Every draft needs a human click to approve — approving only marks it ready; actual sending is wired up in a later checkpoint.
+          </div>
+          {drafts.map((d) => (
+            <div className="card" key={d.id} style={{ marginBottom: 14, opacity: d.approved_by ? 0.75 : 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 4 }}>{d.company_name} · {d.contact_email}</div>
+                  <div className="disp" style={{ fontSize: 16, fontWeight: 700 }}>{d.subject}</div>
+                </div>
+                {d.approved_by ? (
+                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--green)", whiteSpace: "nowrap" }}>
+                    <Check size={11} style={{ verticalAlign: -1 }} /> Approved · awaiting send
+                  </span>
+                ) : (
+                  <button className="btn sm" onClick={() => approveDraft(d.id)} disabled={approvingId === d.id}>
+                    {approvingId === d.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Approving…</> : <><Check size={14} /> Approve</>}
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 13.5, color: "var(--slate)", whiteSpace: "pre-wrap" }}>{d.body}</div>
+            </div>
+          ))}
         </>
       )}
     </>

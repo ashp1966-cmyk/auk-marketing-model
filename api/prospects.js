@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       const prospectsByRun = {};
       if (runIds.length) {
         const rows = await sql`
-          select id, run_id, company_name, contact_name, contact_email, rationale, hubspot_id, verified, status, created_at
+          select id, run_id, company_name, contact_name, contact_email, rationale, hubspot_id, verified, status, is_peer, created_at
           from prospects
           where tenant_id = ${orgId} and run_id = any(${runIds})
           order by id asc
@@ -64,9 +64,9 @@ export default async function handler(req, res) {
       // the AI response said.
       const verified = !!c.verified && !!c.contact_email;
       const [row] = await sql`
-        insert into prospects (run_id, tenant_id, company_name, contact_name, contact_email, rationale, verified, status)
-        values (${run.id}, ${orgId}, ${c.company_name || ''}, ${c.contact_name || null}, ${c.contact_email || null}, ${c.rationale || null}, ${verified}, 'new')
-        returning id, run_id, company_name, contact_name, contact_email, rationale, hubspot_id, verified, status, created_at
+        insert into prospects (run_id, tenant_id, company_name, contact_name, contact_email, rationale, verified, status, is_peer)
+        values (${run.id}, ${orgId}, ${c.company_name || ''}, ${c.contact_name || null}, ${c.contact_email || null}, ${c.rationale || null}, ${verified}, 'new', ${!!c.is_peer})
+        returning id, run_id, company_name, contact_name, contact_email, rationale, hubspot_id, verified, status, is_peer, created_at
       `;
       inserted.push(row);
     }
