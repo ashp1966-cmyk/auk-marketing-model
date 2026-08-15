@@ -1,4 +1,6 @@
+// Build: 2026-08-15T05:51:01Z
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useAuth, useClerk, SignIn } from "@clerk/clerk-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell,
@@ -470,12 +472,6 @@ const PORTFOLIO = {
 };
 
 /* ---------------------------------------------------------------- persistence */
-function loadSaved() {
-  try {
-    const s = localStorage.getItem("auk-marketing-v1");
-    return s ? JSON.parse(s) : {};
-  } catch (e) { return {}; }
-}
 function exportJSON(data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
@@ -534,29 +530,9 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-/* ---------------------------------------------------------------- login gate */
-function Login({ onOk }) {
-  const [u, setU] = useState("");
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    if (!u || !pw) { setErr("Enter username and password"); return; }
-    setBusy(true); setErr("");
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: u, password: pw }),
-      });
-      if (res.ok) { onOk(); }
-      else { setErr("Invalid username or password"); }
-    } catch (e) {
-      setErr("Could not reach the login service");
-    } finally { setBusy(false); }
-  };
-
+/* ---------------------------------------------------------------- auth / tenant gate */
+// Wraps a screen in the same login-page chrome the old shared-password screen used.
+function AuthScreen({ children }) {
   return (
     <div className="aukm">
       <style>{CSS}</style>
@@ -564,31 +540,88 @@ function Login({ onOk }) {
         <div className="loginbox">
           <div className="mark"><img src={LOGO_SRC} alt="AUK Marine & Mining" /></div>
           <div className="loginT">AUK Marine <span style={{ color: "var(--brass)" }}>&amp; Mining</span></div>
-          <div className="loginS">Linked Marketing Model · Restricted access</div>
-          <div className="field" style={{ marginBottom: 12 }}>
-            <label>Username</label>
-            <input className="inp" value={u} onChange={(e) => setU(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} autoFocus />
-          </div>
-          <div className="field" style={{ marginBottom: 18 }}>
-            <label>Password</label>
-            <input className="inp" type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
-          </div>
-          <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={submit} disabled={busy}>
-            {busy ? "Checking…" : "Sign in"}
-          </button>
-          {err && <div className="loginerr">{err}</div>}
+          <div className="loginS">Linked Marketing Model</div>
+          {children}
         </div>
       </div>
     </div>
   );
 }
 
+// Fetches this organization's saved data from Neon (via /api/tenant-data) once
+// Clerk confirms an active organization, then mounts the app with it.
+function TenantDataGate() {
+  const { getToken } = useAuth();
+  const [state, setState] = useState({ status: "loading", data: null, error: null });
+
+  const load = useCallback(async () => {
+    setState({ status: "loading", data: null, error: null });
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/tenant-data", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load data (" + res.status + ")");
+      const json = await res.json();
+      setState({ status: "ready", data: json.data || {}, error: null });
+    } catch (e) {
+      setState({ status: "error", data: null, error: e.message || "Could not load data" });
+    }
+  }, [getToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (state.status === "loading") {
+    return <AuthScreen><div className="loginS" style={{ marginTop: 16 }}>Loading your data…</div></AuthScreen>;
+  }
+  if (state.status === "error") {
+    return (
+      <AuthScreen>
+        <div className="loginerr">{state.error}</div>
+        <button className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} onClick={load}>
+          Retry
+        </button>
+      </AuthScreen>
+    );
+  }
+  return <AppShell savedData={state.data} />;
+}
+
+// Top-level gate: signed out -> Clerk <SignIn/>; signed in without an active
+// organization -> contact-admin message; otherwise load tenant data and mount the app.
+function AuthGate() {
+  const { isLoaded, isSignedIn, orgId } = useAuth();
+
+  if (!isLoaded) {
+    return <AuthScreen><div className="loginS" style={{ marginTop: 16 }}>Loading…</div></AuthScreen>;
+  }
+  if (!isSignedIn) {
+    return (
+      <AuthScreen>
+        <div style={{ marginTop: 16 }}><SignIn routing="virtual" /></div>
+      </AuthScreen>
+    );
+  }
+  if (!orgId) {
+    return (
+      <AuthScreen>
+        <div style={{ marginTop: 16, fontSize: 14, color: "var(--slate)" }}>
+          Your account isn't assigned to an organization yet. Contact your administrator to be added
+          to AUK Marine &amp; Mining (or another organization) before you can access this app.
+        </div>
+      </AuthScreen>
+    );
+  }
+  return <TenantDataGate />;
+}
+
 /* ---------------------------------------------------------------- app */
-export default function App() {
-  const [authed, setAuthed] = useState(false);
+function AppShell({ savedData }) {
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
   const [tab, setTab] = useState("dash");
   const [saveMsg, setSaveMsg] = useState("");
-  const _saved = loadSaved();
+  const _saved = savedData || {};
   const [portfolioItems, setPortfolioItems] = useState(() => initPortfolioItems(_saved.portfolioItems));
   const [goals5, setGoals5] = useState(() => _saved.goals5 || GOALS_SEED);
   const [goalActuals, setGoalActuals] = useState(() => _saved.goalActuals || GOAL_ACTUALS_SEED);
@@ -682,27 +715,56 @@ export default function App() {
     savedAt: new Date().toISOString(),
   }), [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans]);
 
-  const persistNow = useCallback(() => {
+  const persistNow = useCallback(async () => {
     try {
-      localStorage.setItem("auk-marketing-v1", JSON.stringify(buildSaveData()));
-      return true;
+      const token = await getToken();
+      if (!token) return false;
+      const res = await fetch("/api/tenant-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ data: buildSaveData() }),
+      });
+      return res.ok;
     } catch (e) { return false; }
-  }, [buildSaveData]);
+  }, [buildSaveData, getToken]);
 
-  // Auto-save to localStorage whenever key data changes (debounced while actively typing)
+  // Auto-save to Neon (via /api/tenant-data) whenever key data changes (debounced while actively typing)
   useEffect(() => {
     const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
   }, [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans, persistNow]);
 
+  // Keep a short-lived Clerk token in memory so the unload flush below can send it
+  // synchronously with the beacon — getToken() is async and there's no time to await
+  // it once the page is actually closing.
+  const tokenRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    const refreshToken = async () => {
+      try {
+        const t = await getToken();
+        if (!cancelled) tokenRef.current = t;
+      } catch (e) {}
+    };
+    refreshToken();
+    const id = setInterval(refreshToken, 50000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [getToken]);
+
   // Safety net: always keep a ref to the latest data, and flush it immediately if the
   // tab is closed, refreshed, or backgrounded before the debounce above has a chance to fire.
+  // A plain fetch() can be cancelled mid-flight on unload, so this uses sendBeacon instead —
+  // which can't carry a custom Authorization header, so the token rides along in the body
+  // and /api/tenant-data accepts it from either place.
   const saveDataRef = useRef(null);
   useEffect(() => { saveDataRef.current = buildSaveData(); });
   useEffect(() => {
     const flush = () => {
+      if (!saveDataRef.current || !tokenRef.current) return;
       try {
-        if (saveDataRef.current) localStorage.setItem("auk-marketing-v1", JSON.stringify(saveDataRef.current));
+        const payload = JSON.stringify({ token: tokenRef.current, data: saveDataRef.current });
+        const blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon("/api/tenant-data", blob);
       } catch (e) {}
     };
     const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
@@ -716,8 +778,8 @@ export default function App() {
     };
   }, []);
 
-  const saveNow = useCallback(() => {
-    const ok = persistNow();
+  const saveNow = useCallback(async () => {
+    const ok = await persistNow();
     setSaveMsg(ok ? "Saved ✓" : "Save failed");
     setTimeout(() => setSaveMsg(""), 2500);
   }, [persistNow]);
@@ -768,8 +830,6 @@ export default function App() {
     ["plan", "Business Plan", Target],
   ];
 
-  if (!authed) return <Login onOk={() => setAuthed(true)} />;
-
   return (
     <div className="aukm">
       <style>{CSS}</style>
@@ -790,7 +850,7 @@ export default function App() {
         <button className="btn ghost sm" onClick={downloadBackup} title="Download backup JSON">
           <Download size={14} />
         </button>
-        <button className="btn ghost sm" onClick={() => { persistNow(); setAuthed(false); }} title="Sign out">
+        <button className="btn ghost sm" onClick={async () => { await persistNow(); signOut(); }} title="Sign out">
           <LogOut size={15} /> Sign out
         </button>
       </div>
@@ -822,6 +882,10 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+export default function App() {
+  return <AuthGate />;
 }
 
 /* ---------------------------------------------------------------- dashboard */
