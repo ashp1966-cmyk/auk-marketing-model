@@ -2689,6 +2689,8 @@ function Prospecting({ svcs }) {
   const [activeRunId, setActiveRunId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   const loadRuns = useCallback(async () => {
     try {
@@ -2781,6 +2783,26 @@ Return up to 8 candidates, best fits first.`;
   };
 
   const verifiedCount = (run?.prospects || []).filter((p) => p.verified).length;
+  const newCount = runs.reduce((a, r) => a + r.prospects.filter((p) => p.status === "new").length, 0);
+
+  const syncToHubspot = async () => {
+    setSyncBusy(true); setSyncMsg("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/hubspot-sync", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Sync failed");
+      setSyncMsg(`Synced ${json.synced}${json.failed ? `, ${json.failed} failed` : ""} to HubSpot`);
+      await loadRuns();
+    } catch (e) {
+      setSyncMsg("HubSpot sync failed — try again in a moment.");
+    } finally {
+      setSyncBusy(false);
+    }
+  };
 
   return (
     <>
@@ -2790,7 +2812,7 @@ Return up to 8 candidates, best fits first.`;
       </div>
 
       <div className="note" style={{ marginBottom: 16 }}>
-        <b>How it works:</b> pick a service, and Claude searches the web for real companies matching its audience and geography, with a short rationale each. Saved automatically to your organization's prospecting history — nothing here touches HubSpot or sends anything yet.
+        <b>How it works:</b> pick a service, and Claude searches the web for real companies matching its audience and geography, with a short rationale each. Saved automatically to your organization's prospecting history. From there, you can push new candidates into HubSpot as Company/Contact records — nothing sends any outreach yet, that's a later checkpoint.
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
@@ -2820,7 +2842,15 @@ Return up to 8 candidates, best fits first.`;
 
       {runsLoaded && runs.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>Saved runs · {runs.length}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+            <div className="eyebrow">Saved runs · {runs.length}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button className="btn ghost sm" onClick={syncToHubspot} disabled={syncBusy || newCount === 0}>
+                {syncBusy ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Syncing…</> : `Sync ${newCount} new to HubSpot`}
+              </button>
+              {syncMsg && <span style={{ fontSize: 12.5, color: "var(--slate)" }}>{syncMsg}</span>}
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {runs.map((r) => (
               <button key={r.id} className={"navb" + (run?.id === r.id ? " on" : "")} onClick={() => setActiveRunId(r.id)} style={{ fontSize: 12, padding: "7px 10px" }}>
@@ -2856,9 +2886,14 @@ Return up to 8 candidates, best fits first.`;
             <div className="card" key={p.id} style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                 <div className="disp" style={{ fontSize: 17, fontWeight: 700 }}>{p.company_name}</div>
-                <span className="pill" style={{ background: "var(--navy-700)", color: p.verified ? "var(--green)" : "var(--slate)" }}>
-                  {p.verified ? "Verified contact" : "No verified contact"}
-                </span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span className="pill" style={{ background: "var(--navy-700)", color: p.verified ? "var(--green)" : "var(--slate)" }}>
+                    {p.verified ? "Verified contact" : "No verified contact"}
+                  </span>
+                  <span className="pill" style={{ background: "var(--navy-700)", color: p.hubspot_id ? "var(--teal)" : "var(--slate-dim)" }}>
+                    {p.hubspot_id ? "In HubSpot" : "Not synced"}
+                  </span>
+                </div>
               </div>
               <div style={{ fontSize: 13.5, color: "var(--slate)", marginBottom: 10 }}>{p.rationale}</div>
               <div style={{ fontSize: 13.5 }}>
@@ -2871,7 +2906,7 @@ Return up to 8 candidates, best fits first.`;
               </div>
             </div>
           ))}
-          <div className="hint">AI-generated from live web results — verify specifics before any outreach. HubSpot sync and email drafting come in later checkpoints.</div>
+          <div className="hint">AI-generated from live web results — verify specifics before any outreach. Email drafting and sending come in later checkpoints.</div>
         </>
       )}
     </>
