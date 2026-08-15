@@ -8,7 +8,7 @@ import {
 import {
   Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- brand logo */
@@ -825,6 +825,7 @@ function AppShell({ savedData }) {
     ["res", "Resources & Budget", Users],
     ["camp", "Campaign & AI", Sparkles],
     ["play", "Playbook", Map],
+    ["prospect", "Prospecting", Search],
     ["crm", "Feedback & CRM", Radar],
     ["mis", "MIS · Activity", BarChart2],
     ["plan", "Business Plan", Target],
@@ -875,6 +876,7 @@ function AppShell({ savedData }) {
           {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
           {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} />}
           {tab === "play" && <Playbook />}
+          {tab === "prospect" && <Prospecting svcs={svcs} />}
           {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
           {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} />}
           {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
@@ -2664,6 +2666,212 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
               </tbody>
             </table>
           </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- prospecting */
+// Modeled directly on the AI Trend Radar pattern in BizPlan: same web-search-via-
+// Claude-API call, same "scan and browse saved results" shape. The difference is
+// persistence — runs/candidates are tenant-scoped rows in Neon (via /api/prospects),
+// not a JSON blob in tenant_data, so results survive independent of the rest of the
+// app's autosave and are ready for HubSpot sync in a later checkpoint.
+function Prospecting({ svcs }) {
+  const { getToken } = useAuth();
+  const activeSvcs = svcs.filter((s) => s.active !== false);
+  const [serviceId, setServiceId] = useState(() => activeSvcs[0]?.id ?? null);
+  const service = activeSvcs.find((s) => s.id === serviceId) || activeSvcs[0] || null;
+
+  const [runs, setRuns] = useState([]);
+  const [runsLoaded, setRunsLoaded] = useState(false);
+  const [activeRunId, setActiveRunId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/prospects", { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Failed to load saved runs");
+      const json = await res.json();
+      setRuns(json.runs || []);
+    } catch (e) {
+      // Non-fatal — the tab still works for running new research, it just
+      // won't show history until this succeeds.
+    } finally {
+      setRunsLoaded(true);
+    }
+  }, [getToken]);
+
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  const run = runs.find((r) => r.id === activeRunId) || runs[0] || null;
+
+  const runResearch = async () => {
+    if (!service) return;
+    setBusy(true); setErr("");
+    const audience = service.mkt?.audience || "";
+    const geo = service.mkt?.geo || "South Africa";
+    const prompt = `You are a business development researcher for AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com), prospecting for the service line "${service.name}".
+
+Target audience: ${audience || "(not specified — infer a sensible audience from the service name and industry)"}
+Target geography: ${geo}
+
+Search the web for real, currently-operating companies in this geography that plausibly need this service, based on their industry, scale or recent public activity (e.g. news, tenders, expansions, projects).
+
+For each candidate, try to find a real, verifiable named contact (e.g. a manager, procurement lead, or operations lead) and their public business email or a company general contact email. Rules:
+- NEVER invent or guess a plausible-looking email address. If you cannot verify one from search results, leave contact_email null and verified false.
+- Only set verified true if you found a real named contact AND a real email, both from search results.
+- A generic company website/contact-us email you found via search is fine to use as contact_email with verified true, even without a named contact — but never fabricate one.
+
+Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
+{"candidates":[{"company_name":"...","contact_name":"... or null","contact_email":"... or null","verified":true|false,"rationale":"1-2 sentences on why this company is a good prospect for this service"}]}
+Return up to 8 candidates, best fits first.`;
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 3000,
+          messages: [{ role: "user", content: prompt }],
+          // Capped — uncapped web_search lets Claude search as many times as it
+          // decides it needs per run, which is where unpredictable cost comes from.
+          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
+      const jsonStart = text.indexOf("{");
+      const parsed = JSON.parse(text.slice(jsonStart));
+
+      // Rough cost estimate from the response's usage block — Sonnet-family list
+      // pricing plus $0.01/search, for visibility only, not exact billing.
+      const u = data.usage || {};
+      const searchRequests = u.server_tool_use?.web_search_requests || 0;
+      const costEstimate = {
+        inputTokens: u.input_tokens || 0,
+        outputTokens: u.output_tokens || 0,
+        searchRequests,
+        estimatedUsd: (u.input_tokens || 0) / 1e6 * 3 + (u.output_tokens || 0) / 1e6 * 15 + searchRequests * 0.01,
+      };
+
+      const saveRes = await fetch("/api/prospects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          serviceName: service.name,
+          criteria: { audience, geo, costEstimate },
+          candidates: parsed.candidates || [],
+        }),
+      });
+      const saveJson = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saveJson.error || "Save failed");
+
+      setRuns((prev) => [saveJson.run, ...prev].slice(0, 20));
+      setActiveRunId(saveJson.run.id);
+    } catch (e) {
+      setErr("Research failed — try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifiedCount = (run?.prospects || []).filter((p) => p.verified).length;
+
+  return (
+    <>
+      <div className="sechead">
+        <div><div className="eyebrow">Business development</div><h2>Prospecting</h2></div>
+        <div className="sub">Claude searches the live web for companies that fit one of your service lines, and never invents a contact — unverified candidates are flagged, not guessed.</div>
+      </div>
+
+      <div className="note" style={{ marginBottom: 16 }}>
+        <b>How it works:</b> pick a service, and Claude searches the web for real companies matching its audience and geography, with a short rationale each. Saved automatically to your organization's prospecting history — nothing here touches HubSpot or sends anything yet.
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="grid g2">
+          <div className="field">
+            <label>Service to prospect for</label>
+            <select className="sel" value={service?.id ?? ""} onChange={(e) => setServiceId(Number(e.target.value))}>
+              {activeSvcs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+            <button className="btn" onClick={runResearch} disabled={busy || !service}>
+              {busy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Researching…</> : <><Search size={16} /> Run research</>}
+            </button>
+            {err && <span style={{ color: "var(--red)", fontSize: 13 }}>{err}</span>}
+          </div>
+        </div>
+        <div className="hint" style={{ marginTop: 10 }}>
+          Est. cost per run: ~$0.05–0.30 (up to 5 web searches, capped) — a rough guide, not a guarantee; check the actual figure shown on each saved run below.
+        </div>
+        {service && (
+          <div className="hint" style={{ marginTop: 10 }}>
+            Audience: {service.mkt?.audience || "(none set on this service — Inputs tab)"} · Geo: {service.mkt?.geo || "South Africa"}
+          </div>
+        )}
+      </div>
+
+      {runsLoaded && runs.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>Saved runs · {runs.length}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {runs.map((r) => (
+              <button key={r.id} className={"navb" + (run?.id === r.id ? " on" : "")} onClick={() => setActiveRunId(r.id)} style={{ fontSize: 12, padding: "7px 10px" }}>
+                {r.service_name} <span style={{ opacity: 0.7 }}>· {new Date(r.created_at).toLocaleDateString()} · {r.prospects.length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {run && (
+        <>
+          <div className="card" style={{ marginBottom: 16, borderColor: "var(--brass)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>{run.service_name} · {new Date(run.created_at).toLocaleString()}</div>
+                <div style={{ fontSize: 14.5, color: "var(--slate)" }}>{run.prospects.length} candidates · {verifiedCount} with a verified contact</div>
+                {run.criteria?.costEstimate && (
+                  <div className="hint" style={{ marginTop: 6 }}>
+                    Est. cost: ${run.criteria.costEstimate.estimatedUsd.toFixed(3)} · {run.criteria.costEstimate.searchRequests} web searches · {(run.criteria.costEstimate.inputTokens + run.criteria.costEstimate.outputTokens).toLocaleString()} tokens (rough estimate, not exact billing)
+                  </div>
+                )}
+              </div>
+              <span className="pill" style={{ background: "var(--navy-700)", color: "var(--green)", whiteSpace: "nowrap" }}><Save size={11} style={{ verticalAlign: -1 }} /> Saved</span>
+            </div>
+          </div>
+
+          {run.prospects.length === 0 && (
+            <div className="card"><div className="hint">No candidates came back from this run.</div></div>
+          )}
+
+          {run.prospects.map((p) => (
+            <div className="card" key={p.id} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                <div className="disp" style={{ fontSize: 17, fontWeight: 700 }}>{p.company_name}</div>
+                <span className="pill" style={{ background: "var(--navy-700)", color: p.verified ? "var(--green)" : "var(--slate)" }}>
+                  {p.verified ? "Verified contact" : "No verified contact"}
+                </span>
+              </div>
+              <div style={{ fontSize: 13.5, color: "var(--slate)", marginBottom: 10 }}>{p.rationale}</div>
+              <div style={{ fontSize: 13.5 }}>
+                {p.contact_name && <span style={{ marginRight: 14 }}><b style={{ color: "var(--teal)" }}>Contact:</b> {p.contact_name}</span>}
+                {p.contact_email ? (
+                  <span><b style={{ color: "var(--teal)" }}>Email:</b> {p.contact_email}</span>
+                ) : (
+                  <span style={{ color: "var(--slate-dim)" }}>No contact email found — will need manual research before outreach.</span>
+                )}
+              </div>
+            </div>
+          ))}
+          <div className="hint">AI-generated from live web results — verify specifics before any outreach. HubSpot sync and email drafting come in later checkpoints.</div>
         </>
       )}
     </>
