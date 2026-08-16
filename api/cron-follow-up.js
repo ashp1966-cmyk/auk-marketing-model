@@ -70,8 +70,13 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
     }),
   });
   const data = await response.json();
+  if (!response.ok || data.type === 'error') {
+    throw new Error(`Anthropic API error: ${data?.error?.message || `HTTP ${response.status}`}`);
+  }
   const text = (data.content || []).map((i) => (i.type === 'text' ? i.text : '')).join('').replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(text.slice(text.indexOf('{')));
+  const jsonStart = text.indexOf('{');
+  if (jsonStart === -1) throw new Error(`No JSON found in Anthropic response: ${text.slice(0, 200)}`);
+  const parsed = JSON.parse(text.slice(jsonStart));
   if (!parsed.subject || !parsed.body) throw new Error('Incomplete follow-up draft');
   return parsed;
 }
