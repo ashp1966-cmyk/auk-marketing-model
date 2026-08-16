@@ -21,6 +21,12 @@ A multi-tenant React app for AUK Marine & Mining (maritime/mining training & log
 - `vercel dev` is prone to intermittent crashes on Windows (`ECONNRESET` / libuv `UV_HANDLE_CLOSING` assertion failures, unrelated to this app's code) that kill the whole dev server. If localhost stops responding, check whether the `vercel dev`/`vite` processes are still alive and restart if not — this has recurred across sessions and isn't a regression to chase. One recurring signature: a libuv assertion in `src\win\async.c` (line ~94) that kills the server some time after handling requests, not immediately on startup — if a `vercel dev` session that was working starts refusing connections mid-session, this is more likely than a code regression; just relaunch.
 - `vercel.json` intentionally has **no** SPA catch-all rewrite — an earlier `/(.*) → /index.html` rule swallowed Vite's own dev-server asset requests under `vercel dev`. Nothing in this app needs it since there's no client-side router.
 
+## Credential handling
+
+- **Never echo a secret value in full** in chat/output — not `CRON_SECRET`, not API keys (`ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `HUBSPOT_ACCESS_TOKEN`, Clerk keys), not `DATABASE_URL`/connection strings. Reference by variable name, or by first 8 characters if disambiguating between two values (e.g. confirming a rotation actually changed something) is genuinely necessary.
+- **Never write a credential to disk** (e.g. `vercel env pull --environment=production` to a new file) without asking first, even transiently and even if deleted immediately after. Reading `.env.local` — which the user already created themselves via their own `vercel env pull` — is fine; pulling a *different* scope's values to a *new* file is a separate action that needs a go-ahead first.
+- Both of these came up as real mistakes during the Checkpoint 4 build, not hypothetical concerns.
+
 ## Architecture
 
 - **`src/App.jsx`** (~2900 lines) is effectively the entire application. There is no router and no component-file split — every tab/section is a function component defined in this one file, rendered conditionally by the `tab` state in `AppShell` (search `const NAV = [...]` around line 818 for the tab list, and the `tab === "..."` block right after it for what renders each one). When asked to work on a specific tab (e.g. "Funnel Plan", "Prospecting"), grep this file for the matching function name (e.g. `function Funnel(`, `function Prospecting(`) rather than trying to read the whole file.
