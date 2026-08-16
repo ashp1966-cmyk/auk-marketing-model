@@ -11,6 +11,7 @@
 // Tracked as a real gap in CLAUDE.md ("reply detection via inbound webhook") — not
 // forgotten, just out of scope for this checkpoint.
 import { neon } from '@neondatabase/serverless';
+import { callClaude } from './_lib/anthropic-client.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const FOLLOW_UP_DAYS = 5;
@@ -56,22 +57,9 @@ Write a short, polite follow-up (do not assume they ignored the first email on p
 Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
 {"subject":"...","body":"..."}`;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 500,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  const data = await response.json();
-  if (!response.ok || data.type === 'error') {
-    throw new Error(`Anthropic API error: ${data?.error?.message || `HTTP ${response.status}`}`);
+  const { status, data } = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 500 });
+  if (status !== 200 || data.type === 'error') {
+    throw new Error(`Anthropic API error: ${data?.error?.message || `HTTP ${status}`}`);
   }
   const text = (data.content || []).map((i) => (i.type === 'text' ? i.text : '')).join('').replace(/```json|```/g, '').trim();
   const jsonStart = text.indexOf('{');
