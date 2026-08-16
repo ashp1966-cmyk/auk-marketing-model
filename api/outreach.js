@@ -58,6 +58,11 @@ export default async function handler(req, res) {
         values (${prospectId}, ${orgId}, ${subject}, ${body}, ${followUpOf || null})
         returning id, prospect_id, subject, body, approved_by, sent_at, follow_up_of, created_at
       `;
+      await sql`
+        insert into tenant_usage (tenant_id, month, ai_drafts)
+        values (${orgId}, date_trunc('month', now())::date, 1)
+        on conflict (tenant_id, month) do update set ai_drafts = tenant_usage.ai_drafts + 1
+      `;
       return res.status(200).json({ draft: row });
     }
 

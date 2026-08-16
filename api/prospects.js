@@ -75,6 +75,11 @@ export default async function handler(req, res) {
       update prospect_runs set status = 'done' where id = ${run.id}
       returning id, service_name, criteria, status, created_at
     `;
+    await sql`
+      insert into tenant_usage (tenant_id, month, research_runs)
+      values (${orgId}, date_trunc('month', now())::date, 1)
+      on conflict (tenant_id, month) do update set research_runs = tenant_usage.research_runs + 1
+    `;
 
     return res.status(200).json({ run: { ...updatedRun, prospects: inserted } });
   } catch (err) {

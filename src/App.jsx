@@ -2710,6 +2710,8 @@ function Prospecting({ svcs }) {
   const [draftingId, setDraftingId] = useState(null);
   const [draftErr, setDraftErr] = useState("");
   const [approvingId, setApprovingId] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
+  const [sendErr, setSendErr] = useState("");
 
   const loadDrafts = useCallback(async () => {
     try {
@@ -2820,6 +2822,29 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
       setDraftErr("Couldn't approve this draft — try again in a moment.");
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const sendOutreach = async (draftId) => {
+    setSendingId(draftId); setSendErr("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/send-outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: draftId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        // A 429 here means Resend's free-tier 100/day cap was hit — surface that specific,
+        // recoverable message rather than the generic fallback so it doesn't read as a bug.
+        throw new Error(json.error || "Send failed");
+      }
+      setDrafts((prev) => prev.map((d) => (d.id === draftId ? json.draft : d)));
+    } catch (e) {
+      setSendErr(e.message || "Couldn't send this email — try again in a moment.");
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -3066,25 +3091,35 @@ Return up to 8 candidates, best fits first.`;
         <>
           <div className="divh"><h3>Outreach review queue</h3><div className="ln" /><span className="tag">{drafts.filter((d) => !d.approved_by).length} awaiting review</span></div>
           <div className="note" style={{ marginBottom: 16 }}>
-            Nothing here sends automatically. Every draft needs a human click to approve — approving only marks it ready; actual sending is wired up in a later checkpoint.
+            Nothing here sends automatically. Every draft needs a human click to approve, then a separate human click to send.
           </div>
+          {sendErr && <div className="card" style={{ marginBottom: 16, borderColor: "var(--red)" }}><span style={{ color: "var(--red)", fontSize: 13 }}>{sendErr}</span></div>}
           {drafts.map((d) => (
-            <div className="card" key={d.id} style={{ marginBottom: 14, opacity: d.approved_by ? 0.75 : 1 }}>
+            <div className="card" key={d.id} style={{ marginBottom: 14, opacity: d.sent_at ? 0.6 : 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                 <div>
                   <div className="eyebrow" style={{ marginBottom: 4 }}>{d.company_name} · {d.contact_email}</div>
                   <div className="disp" style={{ fontSize: 16, fontWeight: 700 }}>{d.subject}</div>
                 </div>
-                {d.approved_by ? (
-                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--green)", whiteSpace: "nowrap" }}>
-                    <Check size={11} style={{ verticalAlign: -1 }} /> Approved · awaiting send
+                {d.sent_at ? (
+                  <span className="pill" style={{ background: "var(--navy-700)", color: "var(--teal)", whiteSpace: "nowrap" }}>
+                    <Mail size={11} style={{ verticalAlign: -1 }} /> Sent {new Date(d.sent_at).toLocaleDateString()}
                   </span>
+                ) : d.approved_by ? (
+                  <button className="btn sm" onClick={() => sendOutreach(d.id)} disabled={sendingId === d.id}>
+                    {sendingId === d.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Sending…</> : <><Mail size={14} /> Send</>}
+                  </button>
                 ) : (
                   <button className="btn sm" onClick={() => approveDraft(d.id)} disabled={approvingId === d.id}>
                     {approvingId === d.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Approving…</> : <><Check size={14} /> Approve</>}
                   </button>
                 )}
               </div>
+              {d.follow_up_of && (
+                <div className="hint" style={{ color: "var(--brass)", marginBottom: 8 }}>
+                  Auto-drafted after 5 days — there's no reply tracking yet, so this fired on a timer, not confirmed silence. Please confirm there's been no reply before approving.
+                </div>
+              )}
               <div style={{ fontSize: 13.5, color: "var(--slate)", whiteSpace: "pre-wrap" }}>{d.body}</div>
             </div>
           ))}
