@@ -10,6 +10,12 @@ import { neon } from '@neondatabase/serverless';
 import { resolveOrgId } from './_lib/auth.js';
 
 const sql = neon(process.env.DATABASE_URL);
+// Same local-only flag as api/_lib/anthropic-client.js and api/send-outreach.js. Checked
+// directly here (not passed by the client) because if the server itself is in dry-run mode,
+// the subject/body the client is posting came from /api/generate's canned placeholder
+// content regardless of what the client thinks — tag it so it can't be mistaken for a real
+// draft in the review queue.
+const DRAFT_DRY_RUN = process.env.DRAFT_DRY_RUN === 'true';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'PATCH') {
@@ -25,7 +31,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const rows = await sql`
-        select e.id, e.prospect_id, e.subject, e.body, e.approved_by, e.sent_at, e.follow_up_of, e.created_at,
+        select e.id, e.prospect_id, e.subject, e.body, e.approved_by, e.sent_at, e.follow_up_of, e.dry_run, e.created_at,
                p.company_name, p.contact_name, p.contact_email, p.status as prospect_status
         from outreach_emails e
         join prospects p on p.id = e.prospect_id
@@ -54,15 +60,17 @@ export default async function handler(req, res) {
       }
 
       const [row] = await sql`
-        insert into outreach_emails (prospect_id, tenant_id, subject, body, follow_up_of)
-        values (${prospectId}, ${orgId}, ${subject}, ${body}, ${followUpOf || null})
-        returning id, prospect_id, subject, body, approved_by, sent_at, follow_up_of, created_at
+        insert into outreach_emails (prospect_id, tenant_id, subject, body, follow_up_of, dry_run)
+        values (${prospectId}, ${orgId}, ${subject}, ${body}, ${followUpOf || null}, ${DRAFT_DRY_RUN})
+        returning id, prospect_id, subject, body, approved_by, sent_at, follow_up_of, dry_run, created_at
       `;
-      await sql`
-        insert into tenant_usage (tenant_id, month, ai_drafts)
-        values (${orgId}, date_trunc('month', now())::date, 1)
-        on conflict (tenant_id, month) do update set ai_drafts = tenant_usage.ai_drafts + 1
-      `;
+      if (!DRAFT_DRY_RUN) {
+        await sql`
+          insert into tenant_usage (tenant_id, month, ai_drafts)
+          values (${orgId}, date_trunc('month', now())::date, 1)
+          on conflict (tenant_id, month) do update set ai_drafts = tenant_usage.ai_drafts + 1
+        `;
+      }
       return res.status(200).json({ draft: row });
     }
 
@@ -88,7 +96,7 @@ export default async function handler(req, res) {
 
     const [row] = await sql`
       update outreach_emails set approved_by = ${userId} where id = ${id}
-      returning id, prospect_id, subject, body, approved_by, sent_at, follow_up_of, created_at
+      returning id, prospect_id, subject, body, approved_by, sent_at, follow_up_of, dry_run, created_at
     `;
     return res.status(200).json({ draft: row });
   } catch (err) {

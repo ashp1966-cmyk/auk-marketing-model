@@ -15,6 +15,8 @@ import { callClaude } from './_lib/anthropic-client.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const FOLLOW_UP_DAYS = 5;
+// Same local-only flag as api/_lib/anthropic-client.js and api/send-outreach.js.
+const DRAFT_DRY_RUN = process.env.DRAFT_DRY_RUN === 'true';
 
 // Kept identical to the AI_MARKETING_CROSS_SELL_PROMPT constant in src/App.jsx — this
 // file can't import that one directly (App.jsx is JSX, this is a plain Node function),
@@ -89,6 +91,7 @@ export default async function handler(req, res) {
       join prospects p on p.id = e.prospect_id
       join prospect_runs r on r.id = p.run_id
       where e.sent_at is not null
+        and e.dry_run = false
         and e.sent_at <= now() - (${FOLLOW_UP_DAYS} || ' days')::interval
         and not exists (select 1 from outreach_emails f where f.follow_up_of = e.id)
     `;
@@ -117,14 +120,16 @@ export default async function handler(req, res) {
         });
 
         await sql`
-          insert into outreach_emails (prospect_id, tenant_id, subject, body, follow_up_of)
-          values (${row.prospect_id}, ${row.tenant_id}, ${drafted.subject}, ${drafted.body}, ${row.email_id})
+          insert into outreach_emails (prospect_id, tenant_id, subject, body, follow_up_of, dry_run)
+          values (${row.prospect_id}, ${row.tenant_id}, ${drafted.subject}, ${drafted.body}, ${row.email_id}, ${DRAFT_DRY_RUN})
         `;
-        await sql`
-          insert into tenant_usage (tenant_id, month, ai_drafts)
-          values (${row.tenant_id}, date_trunc('month', now())::date, 1)
-          on conflict (tenant_id, month) do update set ai_drafts = tenant_usage.ai_drafts + 1
-        `;
+        if (!DRAFT_DRY_RUN) {
+          await sql`
+            insert into tenant_usage (tenant_id, month, ai_drafts)
+            values (${row.tenant_id}, date_trunc('month', now())::date, 1)
+            on conflict (tenant_id, month) do update set ai_drafts = tenant_usage.ai_drafts + 1
+          `;
+        }
         results.push({ emailId: row.email_id, ok: true });
       } catch (err) {
         results.push({ emailId: row.email_id, ok: false, error: err.message });

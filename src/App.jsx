@@ -3098,7 +3098,12 @@ Return up to 8 candidates, best fits first.`;
             <div className="card" key={d.id} style={{ marginBottom: 14, opacity: d.sent_at ? 0.6 : 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                 <div>
-                  <div className="eyebrow" style={{ marginBottom: 4 }}>{d.company_name} · {d.contact_email}</div>
+                  <div className="eyebrow" style={{ marginBottom: 4 }}>
+                    {d.dry_run && (
+                      <span className="pill" style={{ background: "var(--red)", color: "#fff", marginRight: 8 }}>DRY RUN — not real</span>
+                    )}
+                    {d.company_name} · {d.contact_email}
+                  </div>
                   <div className="disp" style={{ fontSize: 16, fontWeight: 700 }}>{d.subject}</div>
                 </div>
                 {d.sent_at ? (
