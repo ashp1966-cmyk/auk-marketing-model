@@ -540,8 +540,8 @@ function AuthGate() {
     return (
       <AuthScreen>
         <div style={{ marginTop: 16, fontSize: 14, color: "var(--slate)" }}>
-          Your account isn't assigned to an organization yet. Contact your administrator to be added
-          to AUK Marine &amp; Mining (or another organization) before you can access this app.
+          You don't yet have access to this platform. To request access, please contact AUK Marine
+          &amp; Mining at sales@auk-maritime.com.
         </div>
       </AuthScreen>
     );
