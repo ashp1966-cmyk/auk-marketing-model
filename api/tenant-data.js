@@ -35,16 +35,35 @@ export default async function handler(req, res) {
     if (!payload || typeof payload !== 'object') {
       return res.status(400).json({ error: 'Missing data payload' });
     }
+    // The client sends the real Clerk org display name (via useOrganization()) alongside
+    // every save, piggybacked here rather than a separate round-trip — this keeps tenants.name
+    // a real, human-readable name instead of just the raw org id it's bootstrapped with below.
+    const orgName = typeof req.body.orgName === 'string' && req.body.orgName.trim() ? req.body.orgName.trim().slice(0, 255) : null;
 
-    await sql`
-      insert into tenants (id, name)
-      values (${orgId}, ${orgId})
-      on conflict (id) do nothing
-    `;
+    if (orgName) {
+      await sql`
+        insert into tenants (id, name)
+        values (${orgId}, ${orgName})
+        on conflict (id) do update set name = ${orgName}
+      `;
+    } else {
+      await sql`
+        insert into tenants (id, name)
+        values (${orgId}, ${orgId})
+        on conflict (id) do nothing
+      `;
+    }
+    // Shallow top-level merge, not a full replace: `tenant_data.data` here is the row's
+    // CURRENT value at UPDATE time, so a client whose bundle predates some newer field (and
+    // therefore never mentions that key in `payload`) can no longer silently wipe it out on
+    // its next autosave — the existing key survives whenever the incoming payload omits it.
+    // Does NOT protect against a payload that legitimately includes a key with a stale VALUE
+    // (e.g. a tab that mounted before an out-of-band DB write and is now saving back what it
+    // read at mount) — see CLAUDE.md's known-gaps entry on this.
     await sql`
       insert into tenant_data (tenant_id, data)
       values (${orgId}, ${JSON.stringify(payload)}::jsonb)
-      on conflict (tenant_id) do update set data = ${JSON.stringify(payload)}::jsonb, updated_at = now()
+      on conflict (tenant_id) do update set data = tenant_data.data || ${JSON.stringify(payload)}::jsonb, updated_at = now()
     `;
     await sql`
       insert into tenant_activity (tenant_id, user_id, action)

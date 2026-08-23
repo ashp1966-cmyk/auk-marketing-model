@@ -21,8 +21,15 @@ import { neon } from '@neondatabase/serverless';
 import { resolveOrgId } from './_lib/auth.js';
 
 const sql = neon(process.env.DATABASE_URL);
-const FROM_ADDRESS = 'AUK Marine & Mining <onboarding@resend.dev>';
 const DRAFT_DRY_RUN = process.env.DRAFT_DRY_RUN === 'true';
+
+// tenants.name is the real org display name once a client has saved at least once via
+// api/tenant-data.js's orgName piggyback (falls back to the raw org id before that happens,
+// or if it's somehow still unset) — never hardcode a specific tenant's name here.
+function fromAddress(tenantName, orgId) {
+  const label = (tenantName && tenantName !== orgId) ? tenantName : 'Outreach';
+  return `${label.replace(/[<>\r\n]/g, '')} <onboarding@resend.dev>`;
+}
 
 // Pure and exported so it can be tested in isolation, with no network/DB involved, to
 // prove the one invariant that matters here: this can never resolve to a real prospect's
@@ -83,6 +90,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'DRAFT_DRY_RUN is true but DRY_RUN_RECIPIENT is not set — refusing to send.' });
     }
 
+    const [tenantRow] = await sql`select name from tenants where id = ${orgId}`;
+
     const resendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -90,7 +99,7 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: FROM_ADDRESS,
+        from: fromAddress(tenantRow?.name, orgId),
         to: [to],
         subject: DRAFT_DRY_RUN ? `[DRY RUN — real recipient was ${draft.contact_email}] ${draft.subject}` : draft.subject,
         text: draft.body,

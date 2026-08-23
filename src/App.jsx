@@ -1,6 +1,6 @@
 // Build: 2026-08-15T05:51:01Z
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useAuth, useClerk, SignIn } from "@clerk/clerk-react";
+import { useAuth, useClerk, useOrganization, SignIn } from "@clerk/clerk-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell,
@@ -135,335 +135,191 @@ const pct = (n) => (n * 100).toFixed(1) + "%";
 const marginColor = (m) => (m >= 0.4 ? "var(--green)" : m >= 0.25 ? "var(--amber)" : "var(--red)");
 const BARCLR = ["#3D9BC4", "#2BAABF", "#5B9BC9", "#6f9bd1", "#16A34A", "#b98acb"];
 
-/* seed inputs — grounded in real SA data + AUK's own targeting notes, all editable.
-   Market anchors: TNPA ~8,630 vessel arrivals FY2025/26 (+9% y/y); ~304m tonnes throughput (SAnews, May 2026).
-   Per-service funnel economics reflect real channels: LinkedIn for global ship managers (higher CPM/CPC),
-   Meta/Google for mass SA training (cheaper). Rates from 2025/26 B2B benchmarks. Prices = calibrate w/ AUK actuals. */
+/* Generic new-tenant starting point — fictional placeholder services & round numbers, all editable.
+   A saved tenant_data row overrides this entirely (see AppShell's `_saved.svcs || SEED`). */
 const SEED = [
-  { id: 1, name: "Logistics", market: 4000, price: 40000, cost: 0.72, orders: [60, 120, 200], active: true,
-    mkt: { audience: "Exporters, importers & traders", channel: "LinkedIn", geo: "SA + cross-border",
+  { id: 1, name: "Logistics Services", market: 1000, price: 20000, cost: 0.6, orders: [40, 80, 120], active: true,
+    mkt: { audience: "Businesses needing freight & logistics", channel: "LinkedIn", geo: "Domestic + cross-border",
       aw: 0.020, it: 0.05, cl: 0.12, cpm: 150, cpc: 15, touches: 4, cpt: 250,
-      segments: ["Container & Air · Breakbulk · Bulk (Export/Import)", "Modes: Road · Rail · Water · Air", "Transportation · Warehousing · Value-added"] } },
-  { id: 2, name: "Ship inspection services", market: 4000, price: 55000, cost: 0.45, orders: [80, 160, 240], active: true,
-    mkt: { audience: "Ship managers & technical superintendents", channel: "LinkedIn", geo: "Global",
-      aw: 0.012, it: 0.08, cl: 0.12, cpm: 800, cpc: 40, touches: 4, cpt: 350,
-      segments: ["Condition & pre-purchase surveys", "Bunker & draft surveys", "Class / flag-related", "P&I condition surveys"] } },
-  { id: 3, name: "Maritime consulting services", market: 250, price: 220000, cost: 0.40, orders: [10, 18, 28], active: true,
-    mkt: { audience: "Ship owners, operators & port authorities", channel: "LinkedIn", geo: "Regional / global",
-      aw: 0.012, it: 0.07, cl: 0.15, cpm: 700, cpc: 40, touches: 5, cpt: 400,
-      segments: ["Ports & shipping strategy", "Operations & efficiency", "Regulatory / compliance"] } },
-  { id: 4, name: "Business consulting (SA)", market: 600, price: 140000, cost: 0.42, orders: [12, 24, 36], active: true,
-    mkt: { audience: "SA corporates & SMMEs (BEE)", channel: "LinkedIn", geo: "South Africa",
-      aw: 0.020, it: 0.06, cl: 0.12, cpm: 250, cpc: 25, touches: 4, cpt: 300,
-      segments: ["Strategy & growth", "BEE & transformation", "Industry-specific advisory"] } },
-  { id: 5, name: "Cargo inspection & loss adjusting", market: 3500, price: 48000, cost: 0.48, orders: [105, 175, 280], active: true,
-    mkt: { audience: "Insurers, cargo owners, traders & P&I clubs", channel: "LinkedIn", geo: "SA + regional",
-      aw: 0.018, it: 0.06, cl: 0.14, cpm: 400, cpc: 30, touches: 3, cpt: 300,
-      segments: ["Draft & quantity surveys", "Sampling & quality", "Loss & claims adjustment"] } },
-  { id: 6, name: "Training & skills development", market: 2500, price: 14000, cost: 0.38, orders: [100, 175, 250], active: true,
-    mkt: { audience: "Seafarers, SMMEs, entrepreneurs & employers", channel: "Meta", geo: "South Africa",
+      segments: ["Segment A", "Segment B", "Segment C"] } },
+  { id: 2, name: "Inspection Services", market: 1000, price: 25000, cost: 0.45, orders: [50, 100, 150], active: true,
+    mkt: { audience: "Operators needing technical inspections", channel: "LinkedIn", geo: "Regional",
+      aw: 0.012, it: 0.08, cl: 0.12, cpm: 400, cpc: 30, touches: 4, cpt: 300,
+      segments: ["Inspection type A", "Inspection type B", "Inspection type C"] } },
+  { id: 3, name: "Advisory Services A", market: 150, price: 100000, cost: 0.40, orders: [8, 14, 20], active: true,
+    mkt: { audience: "Mid-size businesses & agencies", channel: "LinkedIn", geo: "Regional / global",
+      aw: 0.012, it: 0.07, cl: 0.15, cpm: 350, cpc: 35, touches: 5, cpt: 350,
+      segments: ["Strategy advisory", "Operations advisory", "Compliance advisory"] } },
+  { id: 4, name: "Advisory Services B", market: 400, price: 70000, cost: 0.42, orders: [10, 18, 26], active: true,
+    mkt: { audience: "Local corporates & SMEs", channel: "LinkedIn", geo: "Domestic",
+      aw: 0.020, it: 0.06, cl: 0.12, cpm: 200, cpc: 20, touches: 4, cpt: 250,
+      segments: ["Growth strategy", "Change management advisory", "Industry advisory"] } },
+  { id: 5, name: "Field Services", market: 1000, price: 22000, cost: 0.48, orders: [60, 100, 150], active: true,
+    mkt: { audience: "Buyers, insurers & traders", channel: "LinkedIn", geo: "Domestic + regional",
+      aw: 0.018, it: 0.06, cl: 0.14, cpm: 300, cpc: 25, touches: 3, cpt: 250,
+      segments: ["Survey type A", "Survey type B", "Survey type C"] } },
+  { id: 6, name: "Training & Development", market: 800, price: 8000, cost: 0.38, orders: [50, 90, 130], active: true,
+    mkt: { audience: "Individuals & employers", channel: "Meta", geo: "Domestic",
       aw: 0.025, it: 0.05, cl: 0.15, cpm: 90, cpc: 8, touches: 2, cpt: 150,
-      segments: ["IMO / DoT courses", "Skills programmes", "Corporate & in-house training"] } },
+      segments: ["Certification courses", "Skills programmes", "Corporate training"] } },
 ];
 const CHANNELS = ["LinkedIn", "Meta", "Google", "Email", "Referral", "Sales (Direct Call)", "Events & Exhibitions"];
 
-/* MIS constants — from AUK's own MIS (average gross profit per unit per service) */
+/* Generic new-tenant starting point — a saved tenant_data row overrides these. */
 const MIS_MONTHS = ["Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun"];
-const GP_PER_UNIT = { 1:10000, 2:20000, 3:25000, 4:25000, 5:20000, 6:12000 };
+const GP_PER_UNIT_SEED = { 1: 5000, 2: 8000, 3: 10000, 4: 10000, 5: 8000, 6: 5000 };
 
-/* Prospective customers from AUK MIS — pre-loaded as pipeline anchors */
 const PROSPECTS = [
-  { co:"Transnet",          svc:"Training & skills development",          stage:"Lead", val:36000 },
-  { co:"DTI",               svc:"Training & skills development",          stage:"Lead", val:36000 },
-  { co:"Hanseatic/FMC",     svc:"Ship inspection services",               stage:"Contacted", val:360000 },
-  { co:"Safe Lane",         svc:"Ship inspection services",               stage:"Lead", val:110000 },
-  { co:"Shipping companies",svc:"Logistics",                              stage:"Contacted", val:480000 },
-  { co:"Songatech",         svc:"Logistics",                              stage:"Lead", val:40000 },
-  { co:"AMSOL",             svc:"Training & skills development",          stage:"Lead", val:72000 },
-  { co:"DoT",               svc:"Maritime consulting services",           stage:"Lead", val:140000 },
-  { co:"Amava",             svc:"Logistics",                              stage:"Contacted", val:120000 },
-  { co:"Mining Company 1",  svc:"Cargo inspection & loss adjusting",      stage:"Lead", val:288000 },
-  { co:"Mining Company 2",  svc:"Cargo inspection & loss adjusting",      stage:"Lead", val:288000 },
-  { co:"Mining Company 3",  svc:"Business consulting (SA)",               stage:"Lead", val:420000 },
-  { co:"HYA Matla",         svc:"Business consulting (SA)",               stage:"Lead", val:280000 },
-  { co:"Asal Freight",      svc:"Logistics",                              stage:"Lead", val:120000 },
-  { co:"Government Agency", svc:"Maritime consulting services",           stage:"Lead", val:140000 },
+  { co: "Prospect Co 1",  svc: "Training & Development", stage: "Lead",      val: 36000 },
+  { co: "Prospect Co 2",  svc: "Training & Development", stage: "Lead",      val: 36000 },
+  { co: "Prospect Co 3",  svc: "Inspection Services",     stage: "Contacted", val: 180000 },
+  { co: "Prospect Co 4",  svc: "Inspection Services",     stage: "Lead",      val: 55000 },
+  { co: "Prospect Co 5",  svc: "Logistics Services",       stage: "Contacted", val: 240000 },
+  { co: "Prospect Co 6",  svc: "Logistics Services",       stage: "Lead",      val: 40000 },
+  { co: "Prospect Co 7",  svc: "Field Services",           stage: "Lead",      val: 144000 },
+  { co: "Prospect Co 8",  svc: "Field Services",           stage: "Lead",      val: 144000 },
+  { co: "Prospect Co 9",  svc: "Advisory Services A",      stage: "Lead",      val: 100000 },
+  { co: "Prospect Co 10", svc: "Advisory Services B",      stage: "Lead",      val: 140000 },
 ];
 
-const CLIENT_EXPECT = "What clients expect: expert, tailored advice & strategy; quality delivered on time, on budget and to scope; clear communication on progress; problems solved as they arise; immersive AI/ML-enabled experiences; personalisation; and strong data protection & ethics.";
-
-/* ---- Business Plan & Strategy data — from AUK strategy workbook (2025) ---- */
-const VISION = "Africa's Leading Digital & Green Training, Maritime, Mining, Metallurgy & Logistics Solutions Partner";
+/* ---- Business Plan & Strategy data — generic new-tenant starting point ---- */
+const VISION_SEED = "We help organizations move goods, meet standards, and build capable teams — reliably, at scale.";
 
 // Turnover/profit board-level goals per year — editable aspirations, independent of the funnel model's own projection.
 // Client counts are NOT stored here — they are always read live from the Inputs tab's order targets.
 const GOALS_SEED = {
-  1: { turnover: [4000000, 8000000, 15000000], profit: [600000, 1200000, 2250000] },
-  2: { turnover: [7000000, 14000000, 25000000], profit: [1050000, 2100000, 3750000] },
-  3: { turnover: [2000000, 4000000, 7500000],   profit: [300000, 600000, 1125000] },
-  4: { turnover: [2000000, 4000000, 7500000],   profit: [300000, 600000, 1125000] },
-  5: { turnover: [7000000, 14000000, 25000000], profit: [1050000, 2100000, 3750000] },
-  6: { turnover: [4000000, 8000000, 15000000], profit: [600000, 1200000, 2250000] },
+  1: { turnover: [800000, 1600000, 3200000],  profit: [100000, 200000, 400000] },
+  2: { turnover: [3000000, 5000000, 9000000], profit: [400000, 700000, 1300000] },
+  3: { turnover: [1500000, 2500000, 5000000], profit: [200000, 350000, 700000] },
+  4: { turnover: [600000, 1200000, 2400000],  profit: [90000, 180000, 360000] },
+  5: { turnover: [1000000, 2000000, 4500000], profit: [150000, 300000, 650000] },
+  6: { turnover: [2200000, 3800000, 7000000], profit: [330000, 570000, 1050000] },
 };
 // Actuals recorded against the goals above — starts blank, filled in as the years play out.
 const GOAL_ACTUALS_SEED = Object.fromEntries(
   [1, 2, 3, 4, 5, 6].map((id) => [id, { turnover: [0, 0, 0], profit: [0, 0, 0], clients: [0, 0, 0] }])
 );
 
-const SWOT = {
+const SWOT_SEED = {
   strengths: [
-    "Multi-sector experience: maritime, mining, logistics, consulting, training, automation, smelter development",
-    "Strong Africa–Middle East footprint with India–Africa–China trade exposure",
-    "Established credibility in ship inspections, audits, ESG compliance and port optimisation",
-    "Training academy with potential for scalable digital delivery",
-    "35 years of experience in port, shipping and logistics; well-networked locally",
-    "BEE Level 4 local company with a sound balance sheet; DoT accreditation",
-    "Board strength: Harbour Master & Harbour Pilot experience (Richards Bay)",
-    "Own research team, consulting division and shipping & logistics operations",
+    "Established relationships across multiple service categories, reducing reliance on any single revenue line",
+    "In-house delivery team supplemented by a vetted contractor network for surge capacity",
+    "Long track record of on-time, on-budget delivery in specialized service niches",
+    "Diversified skill base spanning technical delivery, advisory work and training",
+    "Healthy balance sheet with low debt exposure",
   ],
   constraints: [
-    "Automation margins near zero — commoditised market",
-    "Smelting suspended — low alloy prices, investor hesitation",
-    "Trading paused — losses from volatility and thin spreads",
-    "Capital constraints — need low-capex, high-margin pivots",
+    "Limited brand awareness outside the existing referral network",
+    "Manual processes in service delivery limit scale without added headcount",
+    "Thin margins in the more commoditized service lines",
   ],
   opportunities: [
-    "Global decarbonisation & ESG compliance in maritime (CII, EEXI, EU ETS)",
-    "Digital transformation in ports, logistics and mining",
-    "AI-driven predictive maintenance, remote inspections and digital twins",
-    "Africa's growing need for skills development and compliance training",
-    "Reshoring of mineral processing and critical-minerals demand",
-    "Corridor optimisation across Africa (North–South, Maputo, Walvis Bay)",
+    "Growing demand for compliance & certification services as regulatory requirements tighten",
+    "Digital delivery models could extend training reach beyond the current service area",
+    "Emerging tools (AI-assisted reporting, remote monitoring) could improve delivery margins",
+    "Cross-selling advisory services into the existing inspection & logistics client base",
+    "Adjacent, underserved markets open to expansion",
   ],
 };
 
-const PILLARS = [
-  { title: "High-Margin Maritime Services", tag: "Core strength", clr: "var(--brass)",
-    items: ["Digital ship inspections & remote audits — drones, ROVs, AI defect detection; subscription inspection packages",
-      "ESG & emissions compliance — CII/EEXI advisory, carbon footprint reporting, EU ETS support, green-port consulting",
-      "Port optimisation & digitalisation — IoT berth management, turnaround optimisation, digital twins for ports"] },
-  { title: "Mining Consulting & Digital Transformation", tag: "Asset-light pivot", clr: "var(--teal)",
-    items: ["Critical minerals consulting — feasibility studies, mineral audits, ESG compliance, investor-readiness",
-      "Digital mine solutions — IoT sensors, predictive maintenance, remote monitoring, digital twins",
-      "Smelter development advisory — design, feasibility & project development without capex exposure; partner with EPC firms"] },
-  { title: "Training & Skills Development", tag: "The scalable goldmine", clr: "var(--green)",
-    items: ["Pan-African digital skills platform — maritime & logistics, mining & industrial, corporate leadership tracks",
-      "ESG, digital port operations, remote inspection, safety & regulatory, AI literacy for executives",
-      "Hybrid delivery: online + virtual + onsite; subscriptions, corporate contracts, micro-credentials"] },
-  { title: "AI, Digitalisation & Automation", tag: "Reinvented as integrator", clr: "#b98acb",
-    items: ["AI-driven solutions — predictive maintenance, cargo visibility, corridor risk analytics, compliance monitoring",
-      "Digital twins for ports, mines, smelters and logistics hubs — offered as subscriptions",
-      "IoT & remote monitoring; custom AI tools — document automation, incident prediction, training simulators"] },
+const PILLARS_SEED = [
+  { title: "Core Service Delivery", tag: "Primary revenue driver", clr: "var(--brass)",
+    items: ["Standardized delivery playbooks with built-in quality checks",
+      "Dedicated account management for repeat clients",
+      "Volume-based pricing tiers for high-frequency clients"] },
+  { title: "Advisory & Specialist Work", tag: "Higher-margin channel", clr: "var(--teal)",
+    items: ["Fixed-scope engagements with clearly defined deliverables",
+      "Senior practitioner-led project teams",
+      "Referral-driven pipeline sourced from delivery clients"] },
+  { title: "Training & Enablement", tag: "Recurring revenue opportunity", clr: "var(--green)",
+    items: ["Cohort-based course delivery, in person and online",
+      "Corporate contract & bulk-seat pricing",
+      "Certification pathways tied to measurable career outcomes"] },
 ];
 
-const FOCUS_AVOID = {
-  focus: ["Consulting", "Training", "Digital services", "Remote inspections", "ESG compliance", "IoT & AI solutions"],
-  avoid: ["Trading (high risk, low margin)", "Smelting (capital intensive, price-sensitive)", "Commodity automation (low margin)"],
+const FOCUS_AVOID_SEED = {
+  focus: ["Specialist advisory work", "Recurring training contracts", "High-frequency inspection services"],
+  avoid: ["Low-margin commodity resale", "Capital-intensive equipment ownership",
+    "One-off projects with no repeat-revenue potential", "Markets requiring heavy regulatory licensing overhead"],
 };
 
-const BIZ_MODELS = {
-  1: { model: "OUTSOURCED network", csf: "Track record + marketing; accreditation for freight forwarding", prospects: "High",
-       action: "Aggressive marketing; brand on AI and last-mile delivery; participate across the value chain through collaboration" },
-  2: { model: "INTERNAL + CONTRACT", csf: "Marketing + track record + competitive cost", prospects: "High",
-       action: "Expand geographically; related diversification (H&M, claims); commence cargo & landside inspections — volume based" },
-  3: { model: "INTERNAL + CONTRACT", csf: "Consulting track record, capacity, marketing", prospects: "High",
-       action: "Build global skillset; integrate AI; focus on value delivery; more tenders with outsourced expert capacity" },
-  4: { model: "INTERNAL + CONTRACT", csf: "Consulting track record, capacity, marketing, research", prospects: "High",
-       action: "More tenders and marketing; develop expert capacity; business plans & market research as entry products" },
-  5: { model: "INTERNAL + CONTRACT", csf: "Marketing + track record + cost; DoT/insurer relationships", prospects: "High",
-       action: "Priority line — expand claims & loss adjusting alongside surveys; build insurer & P&I relationships" },
-  6: { model: "INTERNAL + CONTRACT", csf: "Marketing, capacity, domain expertise, accreditation, practical brand", prospects: "High",
-       action: "Digital & AI integration; subscription-based learning; start flagship courses — BP ready; expand overseas" },
+const BIZ_MODELS_SEED = {
+  1: { model: "Hybrid delivery", csf: "Reliable turnaround + referral relationships", prospects: "Steady",
+       action: "Deepen the existing referral channel before expanding into paid acquisition" },
+  2: { model: "Internal delivery", csf: "Certified staff capacity + scheduling efficiency", prospects: "High",
+       action: "Add capacity in high-demand regions; introduce tiered service packages" },
+  3: { model: "Contracted / partner network", csf: "Specialist bench strength + case portfolio", prospects: "Medium",
+       action: "Build a shortlist of named specialists to feature in proposals" },
+  4: { model: "Internal delivery", csf: "Track record + proposal quality", prospects: "High",
+       action: "Invest in proposal templates and a reusable case-study library" },
+  5: { model: "Internal delivery", csf: "Partner relationships + response time", prospects: "Steady",
+       action: "Formalize service-level agreements with top referral partners" },
+  6: { model: "Hybrid delivery", csf: "Course quality + completion outcomes", prospects: "High",
+       action: "Pilot a subscription pricing tier alongside one-off enrollments" },
 };
 
-const ANSOFF = [
-  { cell: "Current market × Current services", code: "1A", steps: "Add features (remote & technical support) · price discrimination & credit · differentiated branding · out-deliver competitors · CRM & networking with current stakeholders" },
-  { cell: "New market × Current services", code: "1B", steps: "New geographies · global marketing · align services to international requirements" },
-  { cell: "Current market × New services", code: "2A", steps: "Aggressive awareness marketing for newly launched services" },
-  { cell: "New market × New services", code: "2B", steps: "Enter only with a partner or proven demand — highest risk quadrant" },
+const ANSOFF_SEED = [
+  { cell: "Current market × Current services", code: "1A",
+    steps: "Bundle complementary services together · introduce loyalty pricing for repeat clients · tighten follow-up cadence on quotes · ask satisfied clients for referrals" },
+  { cell: "New market × Current services", code: "1B",
+    steps: "Identify adjacent geographies with a similar buyer profile · localize marketing materials · attend regional trade events" },
+  { cell: "Current market × New services", code: "2A",
+    steps: "Cross-sell new services into the existing client list before spending on external marketing" },
+  { cell: "New market × New services", code: "2B",
+    steps: "Validate demand with a small pilot engagement before committing further resources — highest-risk quadrant" },
 ];
 
 const COMPETITORS_SEED = [
-  { id: 1, name: "Kuehne + Nagel", adv: "No. 1 ocean freight forwarder in the world", counter: "" },
-  { id: 2, name: "DAMCO (Maersk)", adv: "AP Moller division; 10th largest globally", counter: "" },
-  { id: 3, name: "Agility", adv: "Offices in 100 countries; complex assignments in challenging conditions", counter: "" },
-  { id: 4, name: "DSV Panalpina", adv: "Very big and vast network", counter: "" },
-  { id: 5, name: "JM Baxi", adv: "100 years of establishment (India)", counter: "" },
-  { id: 6, name: "Jeena & Company", adv: "Bonded terminals; own state-of-the-art ERP", counter: "" },
-  { id: 7, name: "LCL Logistics", adv: "Own CFS and warehouses", counter: "" },
-  { id: 8, name: "Idwal", adv: "Digital ship inspection platform at global scale", counter: "" },
+  { id: 1, name: "Competitor A", adv: "Lower pricing on high-volume contracts", counter: "" },
+  { id: 2, name: "Competitor B", adv: "Faster turnaround via automated scheduling", counter: "" },
+  { id: 3, name: "Competitor C", adv: "Established relationships with several large accounts", counter: "" },
+  { id: 4, name: "Competitor D", adv: "Broader service menu under one roof", counter: "" },
+  { id: 5, name: "Competitor E", adv: "Strong local presence in a region not currently served", counter: "" },
 ];
 
-/* Confidential — partnership & shareholding structures (internal only) */
-const PARTNERS = [
-  { name: "3CIoT SA", stake: "35% shareholding (12 years)", scope: "Automation & IoT; renewables collaboration",
-    csf: "Track record + marketing + technical expertise", note: "Marketing not yet started — motivate team training" },
-  { name: "Sankh Metal SA", stake: "50% shareholding", scope: "Ferroalloy plant production & other metallurgical processes",
-    csf: "Track record + funding", note: "Projects have long lead times; affiliate-driven revenue" },
-  { name: "3C Engineering", stake: "26% shareholding (13 years)", scope: "Consortium partner — project development & engineering",
-    csf: "Consortium strength + engineering capability", note: "Pipeline of development projects" },
+/* Generic new-tenant starting point — a saved tenant_data row overrides this. */
+const PARTNERS_SEED = [
+  { name: "Example Partner 1", stake: "9% shareholding",
+    scope: "Shared platform licensing — access to a third-party scheduling & reporting tool used across delivery teams",
+    csf: "Vendor relationship management + integration support",
+    note: "Renewed annually; low day-to-day involvement required" },
+  { name: "Example Partner 2", stake: "70% shareholding",
+    scope: "Regional reseller arrangement — partner distributes select service packages under a referral agreement",
+    csf: "Channel enablement + co-branded marketing materials",
+    note: "Newer relationship; volume has been modest so far" },
 ];
 
 const IDEAS_SEED = [
-  { id: 1,  cat: "Innovation",  idea: "Drone-based ship & plant inspections", status: "Exploring" },
-  { id: 2,  cat: "Innovation",  idea: "AI co-pilot for inspections — iterative questioning against checklists", status: "Exploring" },
-  { id: 3,  cat: "Innovation",  idea: "AI agent for ships — predictions from vessel, crew & machinery data", status: "Idea" },
-  { id: 4,  cat: "Innovation",  idea: "Big-data analytics products (e.g. market price analysis by area)", status: "Idea" },
-  { id: 5,  cat: "Growth",      idea: "Commission-based agents to market courses & services", status: "Idea" },
-  { id: 6,  cat: "Growth",      idea: "Sponsored inspections — ask corporates (e.g. AMSOL) to sponsor inspection training", status: "Idea" },
-  { id: 7,  cat: "Growth",      idea: "Trade tenders pipeline — systematic tender scanning", status: "Active" },
-  { id: 8,  cat: "Model",       idea: "Membership programme with member discounts", status: "Idea" },
-  { id: 9,  cat: "Model",       idea: "Opportunity-alert subscription — notify subscribers of tenders & jobs", status: "Idea" },
-  { id: 10, cat: "Model",       idea: "Annual rate contracts for repeat inspection clients", status: "Idea" },
-  { id: 11, cat: "Service",     idea: "Supercargo work — voyage attendance for cargo owners", status: "Idea" },
-  { id: 12, cat: "Service",     idea: "Ship cost-saving advisory; ship, plant & industrial repairs", status: "Idea" },
-  { id: 13, cat: "Training",    idea: "On-board role-play training exercises", status: "Idea" },
-  { id: 14, cat: "Training",    idea: "Link training to measurable performance outcomes", status: "Exploring" },
-  { id: 15, cat: "Partnership", idea: "Fendercare — training, condition inspection & AI model", status: "Exploring" },
-  { id: 16, cat: "Partnership", idea: "Tennant — scope collaboration opportunities", status: "Idea" },
-  { id: 17, cat: "Expansion",   idea: "Beira as outlet for Malawi & Zimbabwe cargo", status: "Idea" },
-  { id: 18, cat: "Expansion",   idea: "Chinese electric scooters into Madagascar & Africa", status: "Idea" },
-  { id: 19, cat: "Expansion",   idea: "Dubai office & Cape Town office", status: "Idea" },
-  { id: 20, cat: "Consulting",  idea: "Supply-chain optimisation smart model; SAMSA funding model", status: "Idea" },
+  { id: 1,  cat: "Innovation", idea: "Mobile app for clients to track service status in real time", status: "Idea" },
+  { id: 2,  cat: "Growth",     idea: "Referral incentive program for existing clients", status: "Idea" },
+  { id: 3,  cat: "Growth",     idea: "Partner with local trade associations for lead sharing", status: "Exploring" },
+  { id: 4,  cat: "Model",      idea: "Flat-rate pricing tier for small-business clients", status: "Idea" },
+  { id: 5,  cat: "Model",      idea: "Prepaid service credits for frequent clients", status: "Idea" },
+  { id: 6,  cat: "Service",    idea: "Add a rush / expedited service option at a premium", status: "Idea" },
+  { id: 7,  cat: "Training",   idea: "Offer a free intro webinar to generate training leads", status: "Active" },
+  { id: 8,  cat: "Training",   idea: "Build a self-paced online course library", status: "Idea" },
+  { id: 9,  cat: "Expansion",  idea: "Evaluate a second regional office once volume justifies it", status: "Idea" },
+  { id: 10, cat: "Consulting", idea: "Develop a lightweight self-assessment tool clients can use before engaging", status: "Idea" },
 ];
 
 const ROADMAP_SEED = [
-  { id: 1,  phase: "90-Day",  item: "Rebrand & reposition — update website messaging", status: "Done" },
-  { id: 2,  phase: "90-Day",  item: "Launch new service pages", status: "Pending" },
-  { id: 3,  phase: "90-Day",  item: "Publish a strategic whitepaper", status: "Pending" },
-  { id: 4,  phase: "90-Day",  item: "Digital training platform — start with 10 flagship courses + corporate packages", status: "Pending" },
-  { id: 5,  phase: "90-Day",  item: "Digital inspection pilot — drones + AI defect detection; discounted pilot to 3 clients", status: "Pending" },
-  { id: 6,  phase: "90-Day",  item: "Create ESG compliance service line — templates, tools, dashboards", status: "Pending" },
-  { id: 7,  phase: "90-Day",  item: "Develop partnerships — IoT vendors, drone companies, universities, port authorities", status: "Pending" },
-  { id: 8,  phase: "Phase 1 (0–6 mo)",   item: "Implement CRM; build digital training platform; AI-assisted inspection templates; digitise SOPs", status: "In progress" },
-  { id: 9,  phase: "Phase 2 (6–18 mo)",  item: "Launch digital inspection platform; IoT pilots; digital twin prototypes; AI analytics dashboards", status: "Pending" },
-  { id: 10, phase: "Phase 3 (18–36 mo)", item: "Subscription digital services; training academy across Africa; tech partnerships; AUK AI Lab", status: "Pending" },
+  { id: 1, phase: "90-Day", item: "Refresh website copy & service pages", status: "Done" },
+  { id: 2, phase: "90-Day", item: "Publish one flagship case study", status: "Pending" },
+  { id: 3, phase: "90-Day", item: "Stand up a basic CRM pipeline for existing leads", status: "Pending" },
+  { id: 4, phase: "90-Day", item: "Launch a starter online course for the training line", status: "Pending" },
+  { id: 5, phase: "Phase 1 (0–6 mo)", item: "Build a referral program for repeat clients", status: "In progress" },
+  { id: 6, phase: "Phase 1 (0–6 mo)", item: "Introduce tiered service packages for the top two service lines", status: "Pending" },
+  { id: 7, phase: "Phase 2 (6–18 mo)", item: "Expand the training catalog with two new certification tracks", status: "Pending" },
+  { id: 8, phase: "Phase 3 (18–36 mo)", item: "Explore a subscription pricing model for recurring service lines", status: "Pending" },
 ];
 
-/* Product/service portfolio — from AUK's course catalogue and consulting service map.
-   Segment-tagging principle: for operational services (Logistics, Ship inspection, Cargo
-   inspection, etc.) segments must be the END USER who needs the service performed, never a
-   peer company that provides the same kind of service — a freight forwarder is a competitor
-   for Logistics, not a customer of it, same logic applies to e.g. other inspection firms for
-   Ship/Cargo inspection. AI-Driven Marketing Consulting is the deliberate exception: it's
-   horizontal and applicable to any business regardless of industry, so its segment stays
-   broad ("Any industry") rather than naming an operational end-user category. */
+/* Generic new-tenant starting point — product/service portfolio (groups/items only).
+   Per-service note/target-segment/landing-price fields live separately in `portfolioMeta`
+   below, tenant-scoped the same way. A saved tenant_data row overrides both.
+   Segment-tagging principle: for operational services segments must be the END USER who
+   needs the service performed, never a peer company that provides the same kind of service. */
 const PORTFOLIO = {
-  6: /* Training & skills development */ {
-    note: "AUK's live course catalogue. Seafarer maritime courses feed the shore-inspector pipeline; SMME courses cross-sell business & AI services.",
-    groups: [
-      { title: "Logistics & shipping", items: [
-        { name: "Forwarding & Customs Compliance L3", code: "", seg: "Shipping & maritime cos", out: "Employability" },
-        { name: "Shipping, Port & Ships' Agency", code: "SPM001", seg: "Transport & logistics", out: "Enhance performance" },
-      ] },
-      { title: "Business & entrepreneurship", items: [
-        { name: "Entrepreneurship, Incubation & Innovation", code: "BO7", seg: "Entrepreneurs", out: "Start your own business" },
-      ] },
-      { title: "Personal development", items: [
-        { name: "Stress Management & Motivation", code: "SK03", seg: "General public", out: "Personal wellbeing" },
-      ] },
-      { title: "Marketing", items: [
-        { name: "Market Research, Branding & Sales Strategy", code: "BO8", seg: "SMMEs", out: "Sell your product / solutions" },
-      ] },
-      { title: "Information & AI", items: [
-        { name: "Social Media Marketing & AI", code: "B02", seg: "SMMEs", out: "Sell your product / solutions" },
-      ] },
-      { title: "Maritime · seafarer to shore inspector", items: [
-        { name: "Internal Audit on a Ship", code: "SPM015", seg: "Seafarers", out: "Shore job as ship inspector" },
-        { name: "PSC Preparation", code: "SPM017", seg: "Seafarers", out: "Shore job as ship inspector" },
-        { name: "RightShip Inspection Readiness", code: "SPM016", seg: "Seafarers", out: "Shore job as ship inspector" },
-        { name: "Pre-Purchase Inspection on a Ship", code: "SPM018", seg: "Seafarers", out: "Shore job as ship inspector" },
-        { name: "Condition Inspection on a Ship", code: "SPM019", seg: "Seafarers", out: "Shore job as ship inspector" },
-      ] },
-      { title: "Port & maritime", items: [
-        { name: "Port Development, Operations & Marketing", code: "SPM009", seg: "Private companies", out: "For port developers" },
-        { name: "Maritime Risk Assessment", code: "SPM011", seg: "Ports & DoTs", out: "Understand maritime risk" },
-        { name: "Pilotage (with simulator)", code: "S08", seg: "Captains & navigators", out: "On-the-job + shore roles" },
-      ] },
-    ],
-  },
-  3: /* Maritime consulting services */ {
-    note: CLIENT_EXPECT,
-    groups: [
-      { title: "Maritime, port & shipping", items: [
-        { name: "Non-financial risk assessment — Shipping, Port & Maritime", seg: "Shipping & maritime · Port" },
-        { name: "Port optimisation & cargo projections", seg: "Port" },
-        { name: "Shipping & maritime advisory", seg: "Shipping & maritime" },
-        { name: "Funding model & tariff setting for state-owned entities", seg: "Maritime · Government" },
-        { name: "Supply chain & transport corridor optimisation", seg: "Manufacturing · Government" },
-      ] },
-      { title: "Feasibility & project development", items: [
-        { name: "Conduct of feasibility studies", seg: "Metallurgy · Shipping · Port · Mining · Logistics · SMME" },
-        { name: "Project case to project development studies", seg: "Metallurgy · Shipping · Port · Mining · Logistics · SMME" },
-      ] },
-      { title: "Market & access", items: [
-        { name: "Market access research", seg: "Mining · Automotive · SMME" },
-      ] },
-    ],
-  },
-  4: /* Business consulting (SA) */ {
-    note: CLIENT_EXPECT,
-    groups: [
-      { title: "Strategy & growth (any industry)", items: [
-        { name: "Business diagnostics & improvement", seg: "Any industry" },
-        { name: "Business plans & models development", seg: "Any industry" },
-        { name: "Growth strategy development & implementation", seg: "Any industry" },
-      ] },
-      { title: "Marketing & digital", items: [
-        { name: "Marketing strategy development & implementation", seg: "Any industry" },
-        { name: "Social media strategy development & implementation", seg: "Any industry" },
-        { name: "AI-Driven Marketing Consulting", seg: "Any industry", usp: "Custom-built AI marketing system that sets a growth target, calculates the exact cost to win it, allocates budget to the highest-return opportunities, and feeds qualified leads straight into a CRM — the same platform running AUK's own growth today. Best fit: SMEs and growth-stage companies without an in-house marketing function." },
-      ] },
-      { title: "Skills & technology", items: [
-        { name: "Skill development strategy", seg: "Education · Any industry" },
-        { name: "Automation, AI & ML", seg: "Any industry" },
-      ] },
-    ],
-  },
-  2: /* Ship inspection services */ {
-    note: "Sold to ship managers & technical superintendents worldwide, primarily via LinkedIn.",
-    groups: [ { title: "Survey types", items: [
-      { name: "Condition & pre-purchase surveys", seg: "Ship managers" },
-      { name: "Bunker & draft surveys", seg: "Owners & charterers" },
-      { name: "Class / flag-related inspections", seg: "Owners" },
-      { name: "P&I condition surveys", seg: "P&I clubs" },
-      { name: "PSC / RightShip readiness", seg: "Managers" },
-    ] } ],
-  },
-  5: /* Cargo inspection & loss adjusting */ {
-    note: "Sold to insurers, cargo owners, traders and P&I clubs across SA and the wider region. AUK has a track record since 2012 — 154 vessel inspections, 21 consulting mandates and 2,219 logistics engagements on file.",
-    groups: [
-      { title: "Quantity & condition surveys", items: [
-        { name: "Draft surveys", seg: "Traders · charterers · owners", out: "Verified cargo quantity at load/discharge" },
-        { name: "Quantity / tally surveys", seg: "Cargo owners · traders", out: "Independent count & measurement" },
-        { name: "Condition inspection on arrival / departure", seg: "Owners · insurers", out: "Documented cargo state" },
-        { name: "Sampling & quality inspection", seg: "Cargo owners · buyers", out: "Quality certification" },
-      ] },
-      { title: "Loss adjustment & claims", items: [
-        { name: "Loss & claims adjustment", seg: "Insurers · P&I clubs", out: "Quantified loss settlement" },
-        { name: "Marine casualty & damage survey", seg: "Insurers · owners", out: "Cause & extent of damage" },
-        { name: "Accident investigation", seg: "P&I clubs · insurers", out: "Root cause & liability report" },
-        { name: "Damage assessment", seg: "Owners · underwriters", out: "Repair cost estimate" },
-      ] },
-      { title: "Risk & warranty", items: [
-        { name: "Marine warranty survey", seg: "Underwriters · banks", out: "Independent risk sign-off" },
-        { name: "Loss prevention survey", seg: "P&I clubs", out: "Prevent future claims" },
-        { name: "Seaworthiness investigation", seg: "Owners · P&I", out: "Fitness-for-purpose certification" },
-        { name: "Failure investigations", seg: "Owners · insurers", out: "Technical root cause analysis" },
-      ] },
-      { title: "Specialist & advisory", items: [
-        { name: "Advice on repair solutions & costs", seg: "Owners · underwriters", out: "Cost-optimised repair path" },
-        { name: "Loss of hire surveys", seg: "Owners · charterers", out: "Revenue-loss quantification" },
-        { name: "Port & maritime risk assessment", seg: "Port authorities · operators", out: "Risk register & mitigation plan" },
-      ] },
-    ],
-  },
-  1: /* Logistics */ {
-    note: "Delivered through the AUK agent & provider network (Imperial, CWT, transporters, stevedores) — a referral-led channel rather than paid ads.",
-    segsCust: ["Exporters", "Importers", "Traders"],
-    segsCargo: ["Container & Air", "Breakbulk", "Bulk (Export/Import)"],
-    landingPrice: true,
-    groups: [
+  1: { groups: [
       { title: "Transportation", items: [
         { name: "Trucking", seg: "Road" },
         { name: "Rail", seg: "Rail" },
@@ -475,8 +331,78 @@ const PORTFOLIO = {
         { name: "Storage", seg: "Warehouse" },
         { name: "Handling", seg: "Warehouse" },
       ] },
-    ],
-  },
+    ] },
+  2: { groups: [ { title: "Inspection types", items: [
+      { name: "Structural & condition assessments", seg: "Buyers" },
+      { name: "Volumetric / quantity verification", seg: "Owners & operators" },
+      { name: "Regulatory compliance checks", seg: "Owners" },
+      { name: "Insurer-commissioned assessments", seg: "Insurers" },
+    ] } ] },
+  3: { groups: [
+      { title: "Strategy & operations", items: [
+        { name: "Operational risk assessment", seg: "Mid-size operators" },
+        { name: "Process & efficiency review", seg: "Operations teams" },
+        { name: "Strategic advisory", seg: "Leadership teams" },
+      ] },
+      { title: "Feasibility & planning", items: [
+        { name: "Pre-investment viability analysis", seg: "Cross-industry" },
+        { name: "Early-stage project scoping", seg: "Cross-industry" },
+      ] },
+    ] },
+  4: { groups: [
+      { title: "Strategy & growth (any industry)", items: [
+        { name: "Operational health check & improvement plan", seg: "Any industry" },
+        { name: "Expansion roadmap design & rollout support", seg: "Any industry" },
+      ] },
+      { title: "Marketing & digital", items: [
+        { name: "Go-to-market planning & execution support", seg: "Any industry" },
+        { name: "Vendor & procurement advisory", seg: "Any industry" },
+      ] },
+      { title: "Skills & technology", items: [
+        { name: "Process automation advisory", seg: "Any industry" },
+      ] },
+    ] },
+  5: { groups: [
+      { title: "Quantity & condition surveys", items: [
+        { name: "Load/discharge quantity verification", seg: "Buyers & sellers", out: "Verified quantity at handover" },
+        { name: "Pre- and post-transit condition checks", seg: "Owners & operators", out: "Documented condition" },
+        { name: "Product sampling & specification checks", seg: "Buyers", out: "Quality certification" },
+      ] },
+      { title: "Claims & risk", items: [
+        { name: "Claims valuation & adjustment support", seg: "Insurers", out: "Quantified settlement" },
+        { name: "Damage cause & cost evaluation", seg: "Owners & underwriters", out: "Repair cost estimate" },
+        { name: "Operational risk & mitigation planning", seg: "Operators", out: "Risk register" },
+      ] },
+    ] },
+  6: { groups: [
+      { title: "Core skills", items: [
+        { name: "Business Communication & Compliance Fundamentals", code: "", seg: "Industry professionals", out: "Job readiness" },
+        { name: "Operations & Service Delivery Basics", code: "TR-101", seg: "Frontline staff", out: "Improved performance" },
+      ] },
+      { title: "Entrepreneurship", items: [
+        { name: "Small Business Startup Essentials", code: "BE-01", seg: "Entrepreneurs", out: "Start your own business" },
+      ] },
+      { title: "Personal development", items: [
+        { name: "Workplace Wellbeing & Resilience", code: "PD-02", seg: "General public", out: "Personal wellbeing" },
+      ] },
+      { title: "Marketing & digital", items: [
+        { name: "Marketing Fundamentals for Small Business", code: "MK-01", seg: "Small businesses", out: "Sell your product / solutions" },
+      ] },
+      { title: "Advanced certification track", items: [
+        { name: "Advanced Certification Level 1", code: "AC-01", seg: "Career changers", out: "Career advancement" },
+        { name: "Advanced Certification Level 2", code: "AC-02", seg: "Career changers", out: "Career advancement" },
+      ] },
+    ] },
+};
+
+const PORTFOLIO_META_SEED = {
+  1: { note: "Delivered through a network of transport & warehousing partners — a referral-led channel rather than paid ads.",
+       segsCust: ["Buyers", "Sellers", "Distributors"], segsCargo: ["General Cargo", "Bulk", "Palletized Goods"], landingPrice: true },
+  2: { note: "Sold to operations managers and technical leads across the industry, primarily via LinkedIn." },
+  3: { note: "What clients expect: clear scoping and realistic timelines; responsive communication; deliverables that translate into action, not just a report; and straightforward, transparent pricing." },
+  4: { note: "What clients expect: clear scoping and realistic timelines; responsive communication; deliverables that translate into action, not just a report; and straightforward, transparent pricing." },
+  5: { note: "Sold to buyers, sellers, insurers and underwriters across the region." },
+  6: { note: "The current course catalog. Entry-level courses feed into the advanced certification track; small-business courses cross-sell into the advisory services lines." },
 };
 
 /* ---------------------------------------------------------------- persistence */
@@ -627,6 +553,8 @@ function AuthGate() {
 function AppShell({ savedData }) {
   const { getToken } = useAuth();
   const { signOut } = useClerk();
+  const { organization } = useOrganization();
+  const companyName = organization?.name || "your company";
   const [tab, setTab] = useState("dash");
   const [saveMsg, setSaveMsg] = useState("");
   const _saved = savedData || {};
@@ -665,6 +593,19 @@ function AppShell({ savedData }) {
     )
   );
   const [crmFb, setCrmFb] = useState(() => _saved.crmFb || { views: 42000, likes: 1850, clicks: 640, leads: 95 });
+  // Business Plan / Portfolio content — not editable via any UI today, but tenant-scoped the
+  // same way as everything else above so a new tenant never reads another tenant's real
+  // business content (this was previously read straight from the module-level *_SEED consts
+  // by every tenant, with no override at all — see CLAUDE.md).
+  const [swot, setSwot] = useState(() => _saved.swot || SWOT_SEED);
+  const [pillars, setPillars] = useState(() => _saved.pillars || PILLARS_SEED);
+  const [focusAvoid, setFocusAvoid] = useState(() => _saved.focusAvoid || FOCUS_AVOID_SEED);
+  const [bizModels, setBizModels] = useState(() => _saved.bizModels || BIZ_MODELS_SEED);
+  const [ansoff, setAnsoff] = useState(() => _saved.ansoff || ANSOFF_SEED);
+  const [partners, setPartners] = useState(() => _saved.partners || PARTNERS_SEED);
+  const [vision, setVision] = useState(() => _saved.vision || VISION_SEED);
+  const [gpPerUnit, setGpPerUnit] = useState(() => _saved.gpPerUnit || GP_PER_UNIT_SEED);
+  const [portfolioMeta, setPortfolioMeta] = useState(() => _saved.portfolioMeta || PORTFOLIO_META_SEED);
 
   // ---- Service lifecycle: add / suspend-reactivate / delete ----
   const addService = useCallback(() => {
@@ -672,7 +613,7 @@ function AppShell({ savedData }) {
     const newSvc = {
       id: nextId, name: "New Service", market: 1000, price: 50000, cost: 0.5,
       orders: [0, 0, 0], active: true,
-      mkt: { audience: "", channel: "LinkedIn", geo: "South Africa",
+      mkt: { audience: "", channel: "LinkedIn", geo: "",
         aw: 0.02, it: 0.06, cl: 0.12, cpm: 200, cpc: 20, touches: 3, cpt: 250, segments: [] },
     };
     setSvcs((prev) => [...prev, newSvc]);
@@ -720,8 +661,10 @@ function AppShell({ savedData }) {
   const buildSaveData = useCallback(() => ({
     svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb,
     portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
+    swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta,
     savedAt: new Date().toISOString(),
-  }), [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans]);
+  }), [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
+       swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta]);
 
   const persistNow = useCallback(async () => {
     try {
@@ -730,17 +673,18 @@ function AppShell({ savedData }) {
       const res = await fetch("/api/tenant-data", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ data: buildSaveData() }),
+        body: JSON.stringify({ data: buildSaveData(), orgName: organization?.name }),
       });
       return res.ok;
     } catch (e) { return false; }
-  }, [buildSaveData, getToken]);
+  }, [buildSaveData, getToken, organization]);
 
   // Auto-save to Neon (via /api/tenant-data) whenever key data changes (debounced while actively typing)
   useEffect(() => {
     const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
-  }, [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans, persistNow]);
+  }, [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
+      swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta, persistNow]);
 
   // Keep a short-lived Clerk token in memory so the unload flush below can send it
   // synchronously with the beacon — getToken() is async and there's no time to await
@@ -877,17 +821,17 @@ function AppShell({ savedData }) {
         <ErrorBoundary key={tab}>
           {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
           {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} onAddService={addService} onToggleActive={toggleServiceActive} onDeleteService={deleteService} />}
-          {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} />}
+          {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} portfolioMeta={portfolioMeta} />}
           {tab === "rev" && <Revenue calc={calc} />}
           {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
           {tab === "opt" && <BudgetOptimizer svcs={svcs} fc={funnelCalc} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />}
           {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
-          {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} />}
+          {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} companyName={companyName} />}
           {tab === "play" && <Playbook />}
-          {tab === "prospect" && <Prospecting svcs={svcs} />}
+          {tab === "prospect" && <Prospecting svcs={svcs} companyName={companyName} />}
           {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
-          {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} />}
-          {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} />}
+          {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} gpPerUnit={gpPerUnit} />}
+          {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />}
         </ErrorBoundary>
       </div>
     </div>
@@ -1078,12 +1022,12 @@ function Inputs({ svcs, setSvcs, onAddService, onToggleActive, onDeleteService }
 }
 
 /* ---------------------------------------------------------------- portfolio */
-function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
+function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems, portfolioMeta }) {
   const [sel, setSel] = useState(svcs[0]?.id);
   const s = svcs.find((x) => x.id === sel) || svcs[0];
-  const p = PORTFOLIO[s?.id];
+  const p = portfolioMeta[s?.id];
   const isConsult = s?.id === 3 || s?.id === 4;
-  const groups = portfolioItems[s?.id] || p?.groups || [{ title: "Services", items: [] }];
+  const groups = portfolioItems[s?.id] || PORTFOLIO[s?.id]?.groups || [{ title: "Services", items: [] }];
 
   const setOrder = (idx, val) => {
     const n = isNaN(parseFloat(val)) ? 0 : parseFloat(val);
@@ -1113,7 +1057,7 @@ function Portfolio({ svcs, setSvcs, portfolioItems, setPortfolioItems }) {
     });
   };
 
-  const [lp, setLp] = useState({ invoice: 612066, duties: 0, freight: 29000, markup: 15 });
+  const [lp, setLp] = useState({ invoice: 500000, duties: 0, freight: 25000, markup: 15 });
   const setL = (k, v) => setLp((o) => ({ ...o, [k]: isNaN(parseFloat(v)) ? 0 : parseFloat(v) }));
   const landing = (lp.invoice + lp.duties + lp.freight) * (1 + lp.markup / 100);
   const hasOut = groups.some((g) => g.items.some((it) => it.out !== undefined));
@@ -1781,7 +1725,7 @@ const PROMO_METHODS = [
   ["Referrals & word of mouth", "Structured asks from delivered clients; the cheapest channel with the highest trust."],
 ];
 
-function Campaign({ svcs, calendar, setCalendar }) {
+function Campaign({ svcs, calendar, setCalendar, companyName }) {
   const [service, setService] = useState(svcs[0]?.name || "");
   const svcObj = svcs.find((x) => x.name === service) || svcs[0];
   const chanToPlatform = { LinkedIn: "LinkedIn", Meta: "Facebook", Google: "LinkedIn", Email: "LinkedIn", Referral: "LinkedIn" };
@@ -1799,14 +1743,14 @@ function Campaign({ svcs, calendar, setCalendar }) {
 
   const generate = async () => {
     setLoading(true); setErr("");
-    const prompt = `You are a senior B2B marketing strategist for AUK Marine & Mining, a South African maritime and mining services company (auk-maritime.com). Write ONE social media post to promote this service.
+    const prompt = `You are a senior B2B marketing strategist for ${companyName || "the company"}. Write ONE social media post to promote this service.
 
 Service: ${service}
 Platform: ${platform}
 Funnel objective: ${objective}
 Tone: ${tone}
-Target audience: ${svcObj?.mkt?.audience || "maritime & mining decision-makers"}
-Geography: ${svcObj?.mkt?.geo || "South Africa"}
+Target audience: ${svcObj?.mkt?.audience || "business decision-makers"}
+Geography: ${svcObj?.mkt?.geo || "the target market"}
 
 Respond with ONLY valid JSON, no markdown, no code fences, using exactly these keys:
 {"post":"the full caption/copy ready to publish","hashtags":["array","of","hashtags without the # symbol"],"bestTime":"best day + time to publish for this platform and audience","frequency":"recommended posting cadence for this objective","rationale":"1-2 sentences on why this timing and channel fit the objective"}`;
@@ -1902,7 +1846,7 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
 const RM_STATUS = ["Pending", "In progress", "Done"];
 const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
 
-function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans }) {
+function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans, companyName, vision, swot, pillars, focusAvoid, bizModels, ansoff, partners }) {
   const [view, setView] = useState("goals");
   const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
   const updComp = (id, k, v) => setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, [k]: v } : c)));
@@ -1918,7 +1862,7 @@ function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, r
   const delRm = (id) => setRoadmap((prev) => prev.filter((r) => r.id !== id));
 
   /* ---- AI Trend Radar ---- */
-  const TREND_AREAS = ["Maritime & shipping", "Mining & metallurgy", "Logistics & freight", "Training & skills development", "ESG & decarbonisation", "AI & digitalisation in industry"];
+  const TREND_AREAS = ["Industry & market trends", "Technology & automation", "Regulatory & compliance", "Talent & workforce", "Sustainability & ESG", "Competitive landscape"];
   const [trendArea, setTrendArea] = useState(TREND_AREAS[0]);
   const [trendBusy, setTrendBusy] = useState(false);
   const [trendErr, setTrendErr] = useState("");
@@ -1927,12 +1871,13 @@ function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, r
 
   const scanTrends = async () => {
     setTrendBusy(true); setTrendErr("");
-    const prompt = `You are a senior strategy advisor to AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com). Its six service lines: logistics/freight forwarding, ship inspection, maritime consulting, business consulting (SA), cargo inspection & loss adjusting, training & skills development. Its strategy: low-capex high-margin services, digital-first, ESG focus, Africa–Middle East–India footprint. Constraints: limited capital; avoid trading, smelting and commodity automation.
+    const name = companyName || "this company";
+    const prompt = `You are a senior strategy advisor to ${name}. Its service lines: ${svcs.map((s) => s.name).join(", ")}.
 
-Search the web for the LATEST trends and developments (news from the past 3-6 months) in: ${trendArea} — globally and in South Africa.
+Search the web for the LATEST trends and developments (news from the past 3-6 months) in: ${trendArea}.
 
 Then respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
-{"summary":"2-3 sentence overview of what is happening right now","trends":[{"trend":"short trend name","detail":"1-2 sentences on what is happening, citing specifics found in the search","impact":"High|Medium|Low","effect":"Opportunity|Threat|Both","implication":"1-2 sentences on what this means for AUK specifically given its profile","adjustment":"one concrete action AUK should take in response"}]}
+{"summary":"2-3 sentence overview of what is happening right now","trends":[{"trend":"short trend name","detail":"1-2 sentences on what is happening, citing specifics found in the search","impact":"High|Medium|Low","effect":"Opportunity|Threat|Both","implication":"1-2 sentences on what this means for ${name} specifically given its profile","adjustment":"one concrete action ${name} should take in response"}]}
 Return exactly 5 trends, ranked most important first.`;
     try {
       const res = await fetch("/api/generate", {
@@ -2003,13 +1948,13 @@ Return exactly 5 trends, ranked most important first.`;
   return (
     <>
       <div className="sechead">
-        <div><div className="eyebrow">Strategy blueprint 2025–2035</div><h2>Business plan</h2></div>
-        <div className="sub">Where AUK stands, where it's going, and how it gets there — excluding the marketing engine, which lives in the rest of this app.</div>
+        <div><div className="eyebrow">Strategy blueprint</div><h2>Business plan</h2></div>
+        <div className="sub">Where {companyName || "the company"} stands, where it's going, and how it gets there — excluding the marketing engine, which lives in the rest of this app.</div>
       </div>
 
       <div className="card" style={{ marginBottom: 16, borderColor: "var(--brass)", background: "linear-gradient(135deg, var(--navy-800), var(--navy-700))" }}>
         <div className="eyebrow" style={{ marginBottom: 8 }}>Positioning</div>
-        <div className="disp" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.3 }}>{VISION}</div>
+        <div className="disp" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.3 }}>{vision}</div>
         <div className="hint" style={{ marginTop: 8 }}>A roadmap for resilience, reinvention and exponential growth — low capex, high margin, digital-first.</div>
       </div>
 
@@ -2090,16 +2035,16 @@ Return exactly 5 trends, ranked most important first.`;
         <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
           <div className="card">
             <div className="eyebrow" style={{ marginBottom: 12, color: "var(--green)" }}><Shield size={13} style={{ verticalAlign: -2 }} /> Strengths</div>
-            {SWOT.strengths.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0", borderBottom: i < SWOT.strengths.length - 1 ? "1px solid var(--navy-700)" : "none" }}>{x}</div>)}
+            {swot.strengths.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0", borderBottom: i < swot.strengths.length - 1 ? "1px solid var(--navy-700)" : "none" }}>{x}</div>)}
           </div>
           <div className="grid g2">
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 12, color: "var(--red)" }}>Current constraints</div>
-              {SWOT.constraints.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
+              {swot.constraints.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
             </div>
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 12, color: "var(--brass)" }}>Opportunity landscape</div>
-              {SWOT.opportunities.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
+              {swot.opportunities.map((x, i) => <div key={i} style={{ fontSize: 13.5, color: "var(--slate)", padding: "5px 0" }}>{x}</div>)}
             </div>
           </div>
         </div>
@@ -2108,7 +2053,7 @@ Return exactly 5 trends, ranked most important first.`;
       {view === "pivot" && (
         <>
           <div className="grid g2">
-            {PILLARS.map((pl, i) => (
+            {pillars.map((pl, i) => (
               <div className="card" key={i} style={{ borderTop: `3px solid ${pl.clr}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                   <div className="disp mono" style={{ width: 32, height: 32, borderRadius: "50%", border: `1.5px solid ${pl.clr}`, color: pl.clr, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{i + 1}</div>
@@ -2125,13 +2070,13 @@ Return exactly 5 trends, ranked most important first.`;
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 10, color: "var(--green)" }}>Focus · low capex, high margin</div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                {FOCUS_AVOID.focus.map((f) => <span key={f} className="pill" style={{ background: "rgba(22,163,74,.12)", color: "var(--green)" }}>{f}</span>)}
+                {focusAvoid.focus.map((f) => <span key={f} className="pill" style={{ background: "rgba(22,163,74,.12)", color: "var(--green)" }}>{f}</span>)}
               </div>
             </div>
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 10, color: "var(--red)" }}>Avoid / minimise</div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                {FOCUS_AVOID.avoid.map((f) => <span key={f} className="pill" style={{ background: "rgba(220,38,38,.12)", color: "var(--red)" }}>{f}</span>)}
+                {focusAvoid.avoid.map((f) => <span key={f} className="pill" style={{ background: "rgba(220,38,38,.12)", color: "var(--red)" }}>{f}</span>)}
               </div>
             </div>
           </div>
@@ -2145,7 +2090,7 @@ Return exactly 5 trends, ranked most important first.`;
               <thead><tr><th>Service line</th><th style={{ textAlign: "left" }}>Delivery model</th><th style={{ textAlign: "left" }}>Critical success factors</th><th>Prospects</th><th style={{ textAlign: "left", minWidth: 260 }}>Action plan</th></tr></thead>
               <tbody>
                 {svcs.map((s) => {
-                  const m = BIZ_MODELS[s.id] || {};
+                  const m = bizModels[s.id] || {};
                   return (
                     <tr key={s.id}>
                       <td className="svc" style={{ whiteSpace: "normal" }}>{s.name}</td>
@@ -2161,7 +2106,7 @@ Return exactly 5 trends, ranked most important first.`;
           </div>
           <div className="divh"><h3>Growth strategy grid (Ansoff)</h3><div className="ln" /></div>
           <div className="grid g2">
-            {ANSOFF.map((a) => (
+            {ansoff.map((a) => (
               <div className="card" key={a.code}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                   <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>{a.code}</span>
@@ -2177,14 +2122,14 @@ Return exactly 5 trends, ranked most important first.`;
       {view === "comp" && (
         <>
           <div className="note" style={{ marginBottom: 16 }}>
-            <b>AUK's competitive edge:</b> chartered ship-broker networks and vessel-owner access; own LCL/FF business contacts across India–Africa; cargo-owner networks; BEE Level 4 local advantage; mine ownership and own cargo support; 35 years across port, shipping and logistics; agreements with other service providers; own research and consulting divisions.
+            <b>Competitive edge:</b> use this space to note what genuinely differentiates {companyName || "your company"} from the competitors below — real relationships, credentials, cost position, or specialization.
           </div>
           <div className="card" style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead><tr>
                 <th style={{ textAlign: "left", minWidth: 150 }}>Competitor</th>
                 <th style={{ textAlign: "left", minWidth: 220 }}>Their advantage</th>
-                <th style={{ textAlign: "left", minWidth: 220, color: "var(--brass)" }}>AUK counter-strategy</th>
+                <th style={{ textAlign: "left", minWidth: 220, color: "var(--brass)" }}>Counter-strategy</th>
                 <th></th>
               </tr></thead>
               <tbody>
@@ -2192,14 +2137,14 @@ Return exactly 5 trends, ranked most important first.`;
                   <tr key={c.id}>
                     <td><input className="cellinp" style={{ width: "100%", minWidth: 140, textAlign: "left", fontWeight: 600, color: "var(--ink)" }} value={c.name} placeholder="Competitor name" onChange={(e) => updComp(c.id, "name", e.target.value)} /></td>
                     <td><input className="cellinp" style={{ width: "100%", minWidth: 210, textAlign: "left", color: "var(--slate)" }} value={c.adv} placeholder="What makes them strong" onChange={(e) => updComp(c.id, "adv", e.target.value)} /></td>
-                    <td><input className="cellinp" style={{ width: "100%", minWidth: 210, textAlign: "left", color: "var(--brass)" }} value={c.counter || ""} placeholder="How AUK wins against them…" onChange={(e) => updComp(c.id, "counter", e.target.value)} /></td>
+                    <td><input className="cellinp" style={{ width: "100%", minWidth: 210, textAlign: "left", color: "var(--brass)" }} value={c.counter || ""} placeholder="How you win against them…" onChange={(e) => updComp(c.id, "counter", e.target.value)} /></td>
                     <td><button className="iconbtn" onClick={() => delComp(c.id)}><Trash2 size={15} /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <button className="btn ghost sm" style={{ marginTop: 12 }} onClick={addComp}><Plus size={14} /> Add competitor</button>
-            <div className="hint" style={{ marginTop: 10 }}>AUK does not out-scale these players — it out-specialises them. Use the counter-strategy column to write exactly how.</div>
+            <div className="hint" style={{ marginTop: 10 }}>Use the counter-strategy column to write exactly how you win against each one.</div>
           </div>
         </>
       )}
@@ -2207,10 +2152,10 @@ Return exactly 5 trends, ranked most important first.`;
       {view === "partners" && (
         <>
           <div className="note" style={{ marginBottom: 16 }}>
-            <b>Confidential — internal only.</b> AUK's partnership &amp; shareholding structure extends its capability well beyond its own headcount: engineering, metallurgy, IoT and finance capacity on demand.
+            <b>Confidential — internal only.</b> This partnership &amp; shareholding structure extends {companyName || "the company"}'s capability well beyond its own headcount.
           </div>
           <div className="grid g2">
-            {PARTNERS.map((pt) => (
+            {partners.map((pt) => (
               <div className="card" key={pt.name} style={{ borderTop: "3px solid var(--brass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10, marginBottom: 8 }}>
                   <div className="disp" style={{ fontSize: 19, fontWeight: 700 }}>{pt.name}</div>
@@ -2295,7 +2240,7 @@ Return exactly 5 trends, ranked most important first.`;
       {view === "radar" && (
         <>
           <div className="note" style={{ marginBottom: 16 }}>
-            <b>How it works:</b> pick a domain and Claude searches the live web for the latest developments, assesses the impact on AUK specifically (given its strategy, footprint and constraints), and recommends concrete adjustments — each of which you can push straight onto the Roadmap.
+            <b>How it works:</b> pick a domain and Claude searches the live web for the latest developments, assesses the impact on {companyName || "the company"} specifically (given its service lines), and recommends concrete adjustments — each of which you can push straight onto the Roadmap.
           </div>
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="grid g2">
@@ -2351,7 +2296,7 @@ Return exactly 5 trends, ranked most important first.`;
                     </div>
                   </div>
                   <div style={{ fontSize: 13.5, color: "var(--slate)", marginBottom: 10 }}>{t.detail}</div>
-                  <div style={{ fontSize: 13.5, marginBottom: 10 }}><b style={{ color: "var(--teal)" }}>What it means for AUK:</b> <span style={{ color: "var(--slate)" }}>{t.implication}</span></div>
+                  <div style={{ fontSize: 13.5, marginBottom: 10 }}><b style={{ color: "var(--teal)" }}>What it means for {companyName || "the company"}:</b> <span style={{ color: "var(--slate)" }}>{t.implication}</span></div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", background: "var(--navy-850)", border: "1px dashed var(--line)", borderRadius: 10, padding: "10px 14px" }}>
                     <div style={{ fontSize: 13.5 }}><b style={{ color: "var(--brass)" }}>Adjustment:</b> <span style={{ color: "var(--ink)" }}>{t.adjustment}</span></div>
                     <button className="btn ghost sm" onClick={() => adjustToRoadmap(t.adjustment)}><Plus size={13} /> Add to roadmap</button>
@@ -2421,7 +2366,7 @@ function Playbook() {
 
 
 /* ---------------------------------------------------------------- MIS · Activity tracker */
-function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects, setProspects }) {
+function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects, setProspects, gpPerUnit }) {
   const [selSvc, setSelSvc] = useState(svcs[0]?.id);
   const [view, setView] = useState("service"); // "service" | "pl" | "pipeline"
   const s = svcs.find((x) => x.id === selSvc) || svcs[0];
@@ -2433,9 +2378,9 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
     }));
 
   const projPerMonth = (svc) => (svc.orders[0] || 0) / 12;
-  // Falls back to price × (1 - cost%) for any service without a hand-entered AUK MIS rate (e.g. newly added lines)
+  // Falls back to price × (1 - cost%) for any service without a hand-entered MIS rate (e.g. newly added lines)
   const gpu = (svcId) => {
-    if (GP_PER_UNIT[svcId] !== undefined) return GP_PER_UNIT[svcId];
+    if (gpPerUnit[svcId] !== undefined) return gpPerUnit[svcId];
     const sv = svcs.find((x) => x.id === svcId);
     return sv ? sv.price * (1 - sv.cost) : 0;
   };
@@ -2479,7 +2424,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
       </div>
 
       <div className="note" style={{ marginBottom: 16 }}>
-        <b>How the link works:</b> the <b style={{ color: "var(--brass)" }}>Projected</b> column for each service = Year 1 order target from the marketing model ÷ 12. Enter actual units delivered each month. The model calculates GP (using AUK's own average GP per unit from the MIS), deducts indirect expenses, and shows operating profit projected vs actual — month by month and YTD.
+        <b>How the link works:</b> the <b style={{ color: "var(--brass)" }}>Projected</b> column for each service = Year 1 order target from the marketing model ÷ 12. Enter actual units delivered each month. The model calculates GP (using the average GP per unit entered below), deducts indirect expenses, and shows operating profit projected vs actual — month by month and YTD.
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
@@ -2499,7 +2444,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
 
           <div className="grid g4" style={{ marginBottom: 16 }}>
             <Kpi label="Monthly target" val={Math.round(projPerMonth(s)).toLocaleString() + " units"} foot={`${Rk(projPerMonth(s) * gpu(s.id))} GP / month`} fill={0.6} accent="var(--brass)" />
-            <Kpi label="Avg GP per unit" val={Rk(gpu(s.id))} foot="From AUK MIS data" fill={0.5} />
+            <Kpi label="Avg GP per unit" val={Rk(gpu(s.id))} foot="From MIS data" fill={0.5} />
             <Kpi label="YTD actual units" val={svcs.find(x=>x.id===selSvc) ? MIS_MONTHS.reduce((a,_,mi)=>a+actOf(selSvc,mi),0).toFixed(1) : "0"} foot="Enter actuals below" fill={0.6} accent="var(--teal)" />
             <Kpi label="YTD actual GP" val={Rk(MIS_MONTHS.reduce((a,_,mi)=>a+actOf(selSvc,mi)*gpu(selSvc),0))} foot="vs target" fill={0.5} accent="var(--green)" />
           </div>
@@ -2560,7 +2505,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
         <>
           <div className="grid g2" style={{ marginBottom: 16 }}>
             <div className="card">
-              <div className="eyebrow" style={{ marginBottom: 12 }}>Indirect expenses (from AUK MIS)</div>
+              <div className="eyebrow" style={{ marginBottom: 12 }}>Indirect expenses (from MIS)</div>
               <div className="grid g2">
                 <div className="field"><label>HR / salaries (R/month)</label>
                   <input className="inp num" value={misIndirect.hr} onChange={(e) => setMisIndirect((m) => ({ ...m, hr: parseFloat(e.target.value)||0 }))} />
@@ -2642,7 +2587,7 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
       {view === "pipeline" && (
         <>
           <div className="note" style={{ marginBottom: 14 }}>
-            These are AUK's real prospective customers from the MIS. Add contact names, update stages as deals move, and track deal values. This feeds the marketing effort — when a prospect converts, enter their actuals on the service tracker.
+            These are your prospective customers. Add contact names, update stages as deals move, and track deal values. This feeds the marketing effort — when a prospect converts, enter their actuals on the service tracker.
           </div>
           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
             <Kpi label="Open pipeline" val={Rk(openVal)} foot={`${prospects.filter(p=>p.stage!=="Won").length} prospects`} fill={0.7} accent="var(--brass)" />
@@ -2686,12 +2631,13 @@ function MIS({ svcs, actuals, setActuals, misIndirect, setMisIndirect, prospects
 // persistence — runs/candidates are tenant-scoped rows in Neon (via /api/prospects),
 // not a JSON blob in tenant_data, so results survive independent of the rest of the
 // app's autosave and are ready for HubSpot sync in a later checkpoint.
-// Standing cross-sell, included in every drafted email regardless of which service the
-// prospect was originally matched against — AUK's AI-driven marketing system is a pitch
-// for every prospect's own growth, not tied to any one service line or prospecting run.
-const AI_MARKETING_CROSS_SELL_PROMPT = `Also include a separate short paragraph (2-3 sentences MAXIMUM, no more) pitching AUK's AI-driven marketing consulting service as a secondary, standing offer — this is a cross-sell included in every outreach email, independent of the service above. Frame it around the prospect's own growth: AUK has built an advanced, AI-driven marketing system, custom-built per client, designed to grow market share and profitability — the outcome is the pitch, not the sophistication of the system. Include exactly ONE credible technical highlight, phrased close to this: "the same AI system sets a growth target, calculates exactly what it costs to win it, intelligently allocates budget to the best opportunities, and feeds qualified leads straight into a CRM — built on the same platform running AUK's own growth today." Do NOT explain the full pipeline (funnel stages, budget optimizer, capacity checks, etc.) — that level of detail belongs in a follow-up or one-pager, not this first-contact email`;
+// A standing cross-sell pitch (an AI-driven marketing consulting upsell) used to be included
+// in every drafted email here — that was AUK-specific business logic, not something every
+// tenant offers, so it's been removed rather than genericized. Known gap: reintroduce as a
+// genuine tenant-configurable feature later (see CLAUDE.md). Until then, is_peer prospects
+// (see draftOutreach) have no cross-sell fallback, so drafting is disabled for them.
 
-function Prospecting({ svcs }) {
+function Prospecting({ svcs, companyName }) {
   const { getToken } = useAuth();
   const activeSvcs = svcs.filter((s) => s.active !== false);
   const [serviceId, setServiceId] = useState(() => activeSvcs[0]?.id ?? null);
@@ -2735,29 +2681,15 @@ function Prospecting({ svcs }) {
   }, {});
 
   const draftOutreach = async (prospect) => {
-    if (!prospect.contact_email) return;
+    // is_peer prospects (their own core business overlaps with the service being pitched)
+    // have no valid pitch — the core service is wrong for them (they're a competitor in it,
+    // not a customer) and there's no cross-sell fallback (see comment above this component).
+    if (!prospect.contact_email || prospect.is_peer) return;
     setDraftingId(prospect.id); setDraftErr("");
     const draftSvc = activeSvcs.find((s) => s.name === run?.service_name) || service;
     const segments = draftSvc?.mkt?.segments || [];
-    // A peer prospect (its own core business overlaps with the service being pitched — e.g. a
-    // freight forwarder flagged during Logistics prospecting) is a poor fit for a direct pitch
-    // of that service. Lead with the AI marketing consulting cross-sell as the PRIMARY pitch
-    // instead, rather than forcing an ill-fitting core-service pitch first.
-    const prompt = prospect.is_peer ? `You are a business development rep for AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com), writing a cold outreach email to a company whose own core business overlaps with AUK's "${draftSvc?.name || run?.service_name || ""}" service line — so DO NOT pitch that service to them, they're a peer/competitor in it, not a customer.
-
-Prospect company: ${prospect.company_name}
-Prospect contact: ${prospect.contact_name || "(no named contact — address the company generally)"}
-Why this prospect was originally flagged (for context only — do not pitch this): ${prospect.rationale || "(not specified)"}
-
-Instead, lead with AUK's AI-driven marketing consulting service as the PRIMARY pitch. Requirements:
-- ${AI_MARKETING_CROSS_SELL_PROMPT}, except here it is the main pitch of the email, not a secondary paragraph — open with it, personalized to this company's own growth given its scale/position (inferred from the context above), not to AUK's core services.
-- Do not pitch or describe AUK's "${draftSvc?.name || run?.service_name || ""}" service anywhere in this email.
-- End with a low-friction call to action (e.g. a short call).
-- Professional, warm, concise — no more than ~150 words in the body.
-- Do not invent any facts about the prospect beyond what's given above.
-
-Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
-{"subject":"...","body":"..."}` : `You are a business development rep for AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com), writing a cold outreach email for the service "${draftSvc?.name || run?.service_name || ""}".
+    const name = companyName || "the company";
+    const prompt = `You are a business development rep for ${name}, writing a cold outreach email for the service "${draftSvc?.name || run?.service_name || ""}".
 
 Prospect company: ${prospect.company_name}
 Prospect contact: ${prospect.contact_name || "(no named contact — address the company generally)"}
@@ -2765,11 +2697,10 @@ Why this prospect was flagged as a fit: ${prospect.rationale || "(not specified)
 Concrete capabilities within this service (pick the ONE most relevant to this prospect): ${segments.length ? segments.join(" · ") : "(none listed — name the service itself concretely, not just its category)"}
 
 Write a short, genuinely personalized cold email (not generic boilerplate). Requirements:
-- Name ONE concrete capability from the list above (or the service itself if no list is given) and tie it directly to the specific reason this company is a fit — e.g. what AUK would actually do for them, not an abstract description like "specialist logistics services tailored to the maritime environment."
-- Do not describe AUK in vague, generic terms — be specific about the one thing being pitched.
-- ${AI_MARKETING_CROSS_SELL_PROMPT}
+- Name ONE concrete capability from the list above (or the service itself if no list is given) and tie it directly to the specific reason this company is a fit — e.g. what ${name} would actually do for them, not an abstract description.
+- Do not describe ${name} in vague, generic terms — be specific about the one thing being pitched.
 - End with a low-friction call to action (e.g. a short call).
-- Professional, warm, concise — no more than ~150 words in the body overall, INCLUDING the cross-sell paragraph above.
+- Professional, warm, concise — no more than ~150 words in the body.
 - Do not invent any facts about the prospect beyond what's given above.
 
 Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
@@ -2871,11 +2802,11 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
     if (!service) return;
     setBusy(true); setErr("");
     const audience = service.mkt?.audience || "";
-    const geo = service.mkt?.geo || "South Africa";
-    const prompt = `You are a business development researcher for AUK Marine & Mining, a South African maritime & mining services company (auk-maritime.com), prospecting for the service line "${service.name}".
+    const geo = service.mkt?.geo || "";
+    const prompt = `You are a business development researcher for ${companyName || "the company"}, prospecting for the service line "${service.name}".
 
 Target audience: ${audience || "(not specified — infer a sensible audience from the service name and industry)"}
-Target geography: ${geo}
+Target geography: ${geo || "(not specified — infer a sensible geography from the service)"}
 
 Search the web for real, currently-operating companies in this geography that plausibly need this service, based on their industry, scale or recent public activity (e.g. news, tenders, expansions, projects).
 
@@ -2883,7 +2814,7 @@ For each candidate, try to find a real, verifiable named contact (e.g. a manager
 - NEVER invent or guess a plausible-looking email address. If you cannot verify one from search results, leave contact_email null and verified false.
 - Only set verified true if you found a real named contact AND a real email, both from search results.
 - A generic company website/contact-us email you found via search is fine to use as contact_email with verified true, even without a named contact — but never fabricate one.
-- Set is_peer true if the candidate's OWN core business overlaps with or competes in "${service.name}" itself (e.g. it is itself a provider of this same kind of service, not a buyer of it) — such a company is still a valid prospect for AUK's separate AI-driven marketing consulting offering, but is a poor fit for a direct "${service.name}" pitch since it's a peer, not a customer. Set is_peer false for genuine customers/buyers of this service.
+- Set is_peer true if the candidate's OWN core business overlaps with or competes in "${service.name}" itself (e.g. it is itself a provider of this same kind of service, not a buyer of it) — such a company is a poor fit for a direct "${service.name}" pitch since it's a peer, not a customer. Set is_peer false for genuine customers/buyers of this service.
 
 Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this structure:
 {"candidates":[{"company_name":"...","contact_name":"... or null","contact_email":"... or null","verified":true|false,"is_peer":true|false,"rationale":"1-2 sentences on why this company is a good prospect for this service"}]}
@@ -3052,7 +2983,7 @@ Return up to 8 candidates, best fits first.`;
                   </span>
                   {p.is_peer && (
                     <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>
-                      Peer — AI marketing cross-sell only
+                      Peer — not a valid outreach target
                     </span>
                   )}
                 </div>
@@ -3070,6 +3001,8 @@ Return up to 8 candidates, best fits first.`;
                 <span className="pill" style={{ background: "var(--navy-700)", color: "var(--teal)" }}>
                   <Mail size={11} style={{ verticalAlign: -1 }} /> Draft{draftsByProspect[p.id].length > 1 ? "s" : ""} in review queue
                 </span>
+              ) : p.is_peer ? (
+                <span className="hint" style={{ color: "var(--slate-dim)" }}>Peer/competitor in this service — not a valid outreach target</span>
               ) : p.contact_email && p.verified ? (
                 <button className="btn ghost sm" onClick={() => draftOutreach(p)} disabled={draftingId === p.id}>
                   {draftingId === p.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Mail size={14} /> Draft outreach email</>}
