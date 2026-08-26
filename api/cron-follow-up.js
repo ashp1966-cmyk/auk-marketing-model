@@ -10,6 +10,11 @@
 // follow_up_of) so the UI can warn the reviewer to confirm silence before approving.
 // Tracked as a real gap in CLAUDE.md ("reply detection via inbound webhook") — not
 // forgotten, just out of scope for this checkpoint.
+//
+// This file intentionally keeps using the plain neon() HTTP tag against the owner
+// DATABASE_URL, NOT api/_lib/db.js's withTenant()/tenant_app role. It queries across
+// every tenant's due follow-ups in one pass — there is no single org to scope
+// app.current_tenant_id to here, by design. See scripts/rls-tenant-isolation.sql.
 import { neon } from '@neondatabase/serverless';
 import { callClaude } from './_lib/anthropic-client.js';
 

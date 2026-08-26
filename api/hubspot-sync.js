@@ -1,10 +1,9 @@
 // Vercel serverless function — syncs tenant-scoped prospects (status = 'new')
 // into HubSpot as Company + Contact records, find-or-create on both, then marks
 // each prospect 'queued' with the HubSpot record id it now maps to.
-import { neon } from '@neondatabase/serverless';
 import { resolveOrgId } from './_lib/auth.js';
+import { withTenant } from './_lib/db.js';
 
-const sql = neon(process.env.DATABASE_URL);
 const HUBSPOT_API = 'https://api.hubapi.com';
 // Safety cap per call — avoids one request firing an unbounded burst of HubSpot
 // API calls if a large backlog of 'new' prospects has built up.
@@ -95,13 +94,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const pending = await sql`
-      select id, company_name, contact_name, contact_email
-      from prospects
-      where tenant_id = ${orgId} and status = 'new'
-      order by id asc
-      limit ${MAX_PER_SYNC}
-    `;
+    const pending = await withTenant(orgId, async (client) => {
+      const { rows } = await client.query(
+        `select id, company_name, contact_name, contact_email
+         from prospects
+         where tenant_id = $1 and status = 'new'
+         order by id asc
+         limit $2`,
+        [orgId, MAX_PER_SYNC]
+      );
+      return rows;
+    });
 
     const results = [];
     for (const p of pending) {
@@ -116,15 +119,26 @@ export default async function handler(req, res) {
         }
 
         const hubspotId = contactId || companyId;
-        await sql`update prospects set hubspot_id = ${hubspotId}, status = 'queued' where id = ${p.id}`;
         results.push({ id: p.id, ok: true, hubspotId, companyId, contactId });
       } catch (err) {
         results.push({ id: p.id, ok: false, error: err.message });
       }
     }
 
+    // Apply all successful updates in one short tenant-scoped transaction, after every
+    // HubSpot network call has already finished — avoids holding a DB connection open
+    // across the loop of external API round trips above.
+    const successes = results.filter((r) => r.ok);
+    if (successes.length) {
+      await withTenant(orgId, async (client) => {
+        for (const r of successes) {
+          await client.query(`update prospects set hubspot_id = $1, status = 'queued' where id = $2`, [r.hubspotId, r.id]);
+        }
+      });
+    }
+
     return res.status(200).json({
-      synced: results.filter((r) => r.ok).length,
+      synced: successes.length,
       failed: results.filter((r) => !r.ok).length,
       results,
     });

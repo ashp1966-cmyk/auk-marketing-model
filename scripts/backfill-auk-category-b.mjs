@@ -17,6 +17,11 @@
 //   that are currently missing. Existing data (svcs, budget, portfolioItems, etc.) untouched.
 // - Requires an exact --tenant-id to write, no "just pick the only row" auto-detection, so a
 //   second tenant existing by the time this runs can't cause a silent wrong-target write.
+//
+// Intentionally uses the owner DATABASE_URL, not api/_lib/db.js's tenant_app role —
+// admin/migration scripts are deliberately cross-tenant (they select/target tenants by
+// id explicitly). See scripts/rls-tenant-isolation.sql for why tenant_app exists and
+// which role api/*.js handlers should use instead.
 
 import { neon } from '@neondatabase/serverless';
 import { readFileSync } from 'fs';

@@ -2,10 +2,8 @@
 // Replaces the old localStorage-based persistence. Verifies the caller's Clerk
 // session token and derives the tenant (organization) id from it server-side —
 // the client never gets to assert which org it's writing to.
-import { neon } from '@neondatabase/serverless';
 import { resolveOrgId } from './_lib/auth.js';
-
-const sql = neon(process.env.DATABASE_URL);
+import { withTenant } from './_lib/db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -20,13 +18,14 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      await sql`
-        insert into tenants (id, name)
-        values (${orgId}, ${orgId})
-        on conflict (id) do nothing
-      `;
-      const rows = await sql`select data from tenant_data where tenant_id = ${orgId}`;
-      const data = rows.length ? rows[0].data : {};
+      const data = await withTenant(orgId, async (client) => {
+        await client.query(
+          'insert into tenants (id, name) values ($1, $1) on conflict (id) do nothing',
+          [orgId]
+        );
+        const { rows } = await client.query('select data from tenant_data where tenant_id = $1', [orgId]);
+        return rows.length ? rows[0].data : {};
+      });
       return res.status(200).json({ data });
     }
 
@@ -40,35 +39,36 @@ export default async function handler(req, res) {
     // a real, human-readable name instead of just the raw org id it's bootstrapped with below.
     const orgName = typeof req.body.orgName === 'string' && req.body.orgName.trim() ? req.body.orgName.trim().slice(0, 255) : null;
 
-    if (orgName) {
-      await sql`
-        insert into tenants (id, name)
-        values (${orgId}, ${orgName})
-        on conflict (id) do update set name = ${orgName}
-      `;
-    } else {
-      await sql`
-        insert into tenants (id, name)
-        values (${orgId}, ${orgId})
-        on conflict (id) do nothing
-      `;
-    }
-    // Shallow top-level merge, not a full replace: `tenant_data.data` here is the row's
-    // CURRENT value at UPDATE time, so a client whose bundle predates some newer field (and
-    // therefore never mentions that key in `payload`) can no longer silently wipe it out on
-    // its next autosave — the existing key survives whenever the incoming payload omits it.
-    // Does NOT protect against a payload that legitimately includes a key with a stale VALUE
-    // (e.g. a tab that mounted before an out-of-band DB write and is now saving back what it
-    // read at mount) — see CLAUDE.md's known-gaps entry on this.
-    await sql`
-      insert into tenant_data (tenant_id, data)
-      values (${orgId}, ${JSON.stringify(payload)}::jsonb)
-      on conflict (tenant_id) do update set data = tenant_data.data || ${JSON.stringify(payload)}::jsonb, updated_at = now()
-    `;
-    await sql`
-      insert into tenant_activity (tenant_id, user_id, action)
-      values (${orgId}, ${userId}, 'save')
-    `;
+    await withTenant(orgId, async (client) => {
+      if (orgName) {
+        await client.query(
+          'insert into tenants (id, name) values ($1, $2) on conflict (id) do update set name = $2',
+          [orgId, orgName]
+        );
+      } else {
+        await client.query(
+          'insert into tenants (id, name) values ($1, $1) on conflict (id) do nothing',
+          [orgId]
+        );
+      }
+      // Shallow top-level merge, not a full replace: `tenant_data.data` here is the row's
+      // CURRENT value at UPDATE time, so a client whose bundle predates some newer field (and
+      // therefore never mentions that key in `payload`) can no longer silently wipe it out on
+      // its next autosave — the existing key survives whenever the incoming payload omits it.
+      // Does NOT protect against a payload that legitimately includes a key with a stale VALUE
+      // (e.g. a tab that mounted before an out-of-band DB write and is now saving back what it
+      // read at mount) — see CLAUDE.md's known-gaps entry on this.
+      await client.query(
+        `insert into tenant_data (tenant_id, data)
+         values ($1, $2::jsonb)
+         on conflict (tenant_id) do update set data = tenant_data.data || $2::jsonb, updated_at = now()`,
+        [orgId, JSON.stringify(payload)]
+      );
+      await client.query(
+        `insert into tenant_activity (tenant_id, user_id, action) values ($1, $2, 'save')`,
+        [orgId, userId]
+      );
+    });
 
     return res.status(200).json({ ok: true });
   } catch (err) {
