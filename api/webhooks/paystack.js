@@ -21,7 +21,11 @@ import { createHmac, timingSafeEqual } from 'crypto';
 // them (re-serializing can reorder keys/whitespace and silently break the HMAC match).
 export const config = { api: { bodyParser: false } };
 
-const sql = neon(process.env.DATABASE_URL);
+// Production and Preview have no plain DATABASE_URL — only POSTGRES_URL (same
+// neondb_owner-role connection Vercel's Neon integration auto-provisions), confirmed
+// against this project's Preview env vars. Development's .env.local does have a real
+// DATABASE_URL. Fall back so this one file works unmodified across all three scopes.
+const sql = neon(process.env.DATABASE_URL || process.env.POSTGRES_URL);
 
 async function readRawBody(req) {
   const chunks = [];
