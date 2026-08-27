@@ -1,0 +1,16 @@
+-- Per-tenant HubSpot token column (CLAUDE-CODE-BRIEF-hubspot-per-tenant.md, Step 1).
+-- NOT YET RUN ANYWHERE. Review before executing.
+--
+-- Run order: rls-test Neon branch first, only then production, after explicit approval.
+--
+-- Nullable, no default: AUK's existing row won't have a value until backfilled
+-- separately (Step 4 of the brief). A tenant with hubspot_token = NULL means sync is
+-- simply unavailable for them (friendly error from api/hubspot-sync.js), not a broken
+-- state -- this mirrors how every other per-tenant AppShell field defaults when unset.
+--
+-- No new grants/policies needed: `tenants` already has row-level security scoped by
+-- `id` (scripts/rls-tenant-isolation.sql) and the `tenant_app` role already holds
+-- select/insert/update/delete on the whole `tenants` table, so a new column on it is
+-- automatically covered by the existing grant and the existing tenant_isolation policy
+-- -- nothing else in the RLS setup changes.
+alter table tenants add column if not exists hubspot_token text;

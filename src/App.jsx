@@ -2651,6 +2651,53 @@ function Prospecting({ svcs, companyName }) {
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
 
+  const [hsConnected, setHsConnected] = useState(false);
+  const [hsMasked, setHsMasked] = useState(null);
+  const [hsLoaded, setHsLoaded] = useState(false);
+  const [hsTokenInput, setHsTokenInput] = useState("");
+  const [hsBusy, setHsBusy] = useState(false);
+  const [hsMsg, setHsMsg] = useState("");
+
+  const loadHubspotStatus = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/hubspot-token", { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Failed to load HubSpot connection status");
+      const json = await res.json();
+      setHsConnected(!!json.connected);
+      setHsMasked(json.masked || null);
+    } catch (e) {
+      // Non-fatal — the settings card just won't show a status until this succeeds.
+    } finally {
+      setHsLoaded(true);
+    }
+  }, [getToken]);
+
+  useEffect(() => { loadHubspotStatus(); }, [loadHubspotStatus]);
+
+  const saveHubspotToken = async () => {
+    if (!hsTokenInput.trim()) return;
+    setHsBusy(true); setHsMsg("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/hubspot-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ token: hsTokenInput.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Save failed");
+      setHsConnected(true);
+      setHsMasked(json.masked || null);
+      setHsTokenInput("");
+      setHsMsg("HubSpot connected.");
+    } catch (e) {
+      setHsMsg("Couldn't save that token — try again.");
+    } finally {
+      setHsBusy(false);
+    }
+  };
+
   const [drafts, setDrafts] = useState([]);
   const [draftsLoaded, setDraftsLoaded] = useState(false);
   const [draftingId, setDraftingId] = useState(null);
@@ -2901,6 +2948,36 @@ Return up to 8 candidates, best fits first.`;
 
       <div className="note" style={{ marginBottom: 16 }}>
         <b>How it works:</b> pick a service, and Claude searches the web for real companies matching its audience and geography, with a short rationale each. Saved automatically to your organization's prospecting history. From there, you can push new candidates into HubSpot as Company/Contact records — nothing sends any outreach yet, that's a later checkpoint.
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="eyebrow">HubSpot connection</div>
+        {hsLoaded && hsConnected ? (
+          <div className="hint" style={{ marginTop: 6 }}>
+            Connected — token ending in <b>{hsMasked?.slice(-4) || "····"}</b>. Paste a new token below to replace it.
+          </div>
+        ) : (
+          <div className="hint" style={{ marginTop: 6 }}>
+            Not connected — paste your organization's own HubSpot private-app token to enable syncing. Sync is unavailable until this is set.
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+          <div className="field" style={{ flex: 1, minWidth: 240 }}>
+            <label>HubSpot private-app token</label>
+            <input
+              className="inp"
+              type="password"
+              autoComplete="off"
+              placeholder="pat-..."
+              value={hsTokenInput}
+              onChange={(e) => setHsTokenInput(e.target.value)}
+            />
+          </div>
+          <button className="btn ghost sm" onClick={saveHubspotToken} disabled={hsBusy || !hsTokenInput.trim()}>
+            {hsBusy ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Saving…</> : "Save token"}
+          </button>
+          {hsMsg && <span style={{ fontSize: 12.5, color: "var(--slate)" }}>{hsMsg}</span>}
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>

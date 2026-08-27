@@ -9,12 +9,12 @@ const HUBSPOT_API = 'https://api.hubapi.com';
 // API calls if a large backlog of 'new' prospects has built up.
 const MAX_PER_SYNC = 25;
 
-async function hubspotFetch(path, options = {}) {
+async function hubspotFetch(token, path, options = {}) {
   const res = await fetch(`${HUBSPOT_API}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       ...(options.headers || {}),
     },
   });
@@ -22,8 +22,8 @@ async function hubspotFetch(path, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-async function searchOne(objectType, propertyName, value) {
-  const { ok, data } = await hubspotFetch(`/crm/v3/objects/${objectType}/search`, {
+async function searchOne(token, objectType, propertyName, value) {
+  const { ok, data } = await hubspotFetch(token, `/crm/v3/objects/${objectType}/search`, {
     method: 'POST',
     body: JSON.stringify({
       filterGroups: [{ filters: [{ propertyName, operator: 'EQ', value }] }],
@@ -35,15 +35,15 @@ async function searchOne(objectType, propertyName, value) {
   return null;
 }
 
-async function findOrCreateCompany(companyName, domain) {
+async function findOrCreateCompany(token, companyName, domain) {
   const existing = domain
-    ? await searchOne('companies', 'domain', domain)
-    : await searchOne('companies', 'name', companyName);
+    ? await searchOne(token, 'companies', 'domain', domain)
+    : await searchOne(token, 'companies', 'name', companyName);
   if (existing) return existing;
 
   const properties = { name: companyName };
   if (domain) properties.domain = domain;
-  const { ok, data } = await hubspotFetch('/crm/v3/objects/companies', {
+  const { ok, data } = await hubspotFetch(token, '/crm/v3/objects/companies', {
     method: 'POST',
     body: JSON.stringify({ properties }),
   });
@@ -51,8 +51,8 @@ async function findOrCreateCompany(companyName, domain) {
   return data.id;
 }
 
-async function findOrCreateContact(email, contactName, companyName) {
-  const existing = await searchOne('contacts', 'email', email);
+async function findOrCreateContact(token, email, contactName, companyName) {
+  const existing = await searchOne(token, 'contacts', 'email', email);
   if (existing) return existing;
 
   const [firstname, ...rest] = (contactName || '').trim().split(/\s+/).filter(Boolean);
@@ -61,7 +61,7 @@ async function findOrCreateContact(email, contactName, companyName) {
   if (firstname) properties.firstname = firstname;
   if (lastname) properties.lastname = lastname;
   if (companyName) properties.company = companyName;
-  const { ok, data } = await hubspotFetch('/crm/v3/objects/contacts', {
+  const { ok, data } = await hubspotFetch(token, '/crm/v3/objects/contacts', {
     method: 'POST',
     body: JSON.stringify({ properties }),
   });
@@ -69,10 +69,10 @@ async function findOrCreateContact(email, contactName, companyName) {
   return data.id;
 }
 
-async function associateContactToCompany(contactId, companyId) {
+async function associateContactToCompany(token, contactId, companyId) {
   // Best-effort — a failed association shouldn't undo an otherwise-successful sync.
   try {
-    await hubspotFetch(`/crm/v3/objects/contacts/${contactId}/associations/companies/${companyId}/contact_to_company`, {
+    await hubspotFetch(token, `/crm/v3/objects/contacts/${contactId}/associations/companies/${companyId}/contact_to_company`, {
       method: 'PUT',
     });
   } catch (err) {}
@@ -89,12 +89,9 @@ export default async function handler(req, res) {
   }
   const { orgId } = auth;
 
-  if (!process.env.HUBSPOT_ACCESS_TOKEN) {
-    return res.status(500).json({ error: 'HUBSPOT_ACCESS_TOKEN is not configured' });
-  }
-
   try {
-    const pending = await withTenant(orgId, async (client) => {
+    const { token, pending } = await withTenant(orgId, async (client) => {
+      const tenantRow = await client.query('select hubspot_token from tenants where id = $1', [orgId]);
       const { rows } = await client.query(
         `select id, company_name, contact_name, contact_email
          from prospects
@@ -103,19 +100,23 @@ export default async function handler(req, res) {
          limit $2`,
         [orgId, MAX_PER_SYNC]
       );
-      return rows;
+      return { token: tenantRow.rows[0]?.hubspot_token || null, pending: rows };
     });
+
+    if (!token) {
+      return res.status(400).json({ error: 'Connect your HubSpot account first' });
+    }
 
     const results = [];
     for (const p of pending) {
       try {
         const domain = p.contact_email ? p.contact_email.split('@')[1] : null;
-        const companyId = await findOrCreateCompany(p.company_name, domain);
+        const companyId = await findOrCreateCompany(token, p.company_name, domain);
 
         let contactId = null;
         if (p.contact_email) {
-          contactId = await findOrCreateContact(p.contact_email, p.contact_name, p.company_name);
-          await associateContactToCompany(contactId, companyId);
+          contactId = await findOrCreateContact(token, p.contact_email, p.contact_name, p.company_name);
+          await associateContactToCompany(token, contactId, companyId);
         }
 
         const hubspotId = contactId || companyId;
