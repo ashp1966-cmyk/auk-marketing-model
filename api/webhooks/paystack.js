@@ -151,7 +151,7 @@ export default async function handler(req, res) {
     // separate select-then-insert race window.
     const inserted = await sql`
       insert into webhook_events (event_id, provider, payload)
-      values (${eventId}, 'paystack', ${sql.json(body)})
+      values (${eventId}, 'paystack', ${JSON.stringify(body)}::jsonb)
       on conflict (event_id) do nothing
       returning event_id
     `;
