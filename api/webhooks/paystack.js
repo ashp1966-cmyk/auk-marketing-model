@@ -16,10 +16,16 @@
 import { neon } from '@neondatabase/serverless';
 import { createHmac, timingSafeEqual } from 'crypto';
 
-// Raw-body access requires disabling Vercel's default JSON body parsing — the signature
-// must be computed over the exact bytes Paystack sent, not a re-serialized JSON.parse of
-// them (re-serializing can reorder keys/whitespace and silently break the HMAC match).
-export const config = { api: { bodyParser: false } };
+// NOTE: `export const config = { api: { bodyParser: false } }` is a Next.js-only
+// convention and does nothing here — this is a plain Vercel Node.js Serverless Function,
+// which has no built-in body parser to disable in the first place (confirmed against
+// Vercel/community docs while diagnosing a local `vercel dev` issue where req.body showed
+// up already parsed and the request stream already drained before this handler ran —
+// vercel dev's raw-body handling for plain functions is documented as unreliable
+// specifically in local dev, separately from whatever the real deployed runtime does).
+// readRawBody() below reads the stream directly, which is the correct approach for a
+// plain function regardless — the signature must be computed over the exact bytes
+// Paystack sent, not a re-serialized JSON.parse of them.
 
 // Production and Preview have no plain DATABASE_URL — only POSTGRES_URL (same
 // neondb_owner-role connection Vercel's Neon integration auto-provisions), confirmed
