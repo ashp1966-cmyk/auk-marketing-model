@@ -1,6 +1,6 @@
 // Build: 2026-08-15T05:51:01Z
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useAuth, useClerk, useOrganization, SignIn } from "@clerk/clerk-react";
+import { useAuth, useClerk, useOrganization, useUser, SignIn } from "@clerk/clerk-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell,
@@ -8,7 +8,7 @@ import {
 import {
   Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search, Mail, Check,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search, Mail, Check, CreditCard,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- brand logo */
@@ -781,6 +781,7 @@ function AppShell({ savedData }) {
     ["crm", "Feedback & CRM", Radar],
     ["mis", "MIS · Activity", BarChart2],
     ["plan", "Business Plan", Target],
+    ["billing", "Billing", CreditCard],
   ];
 
   return (
@@ -832,6 +833,7 @@ function AppShell({ savedData }) {
           {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
           {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} gpPerUnit={gpPerUnit} />}
           {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />}
+          {tab === "billing" && <Billing companyName={companyName} />}
         </ErrorBoundary>
       </div>
     </div>
@@ -1841,6 +1843,106 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
 }
 
 
+
+/* ---------------------------------------------------------------- billing */
+function Billing({ companyName }) {
+  const { getToken } = useAuth();
+  const { user } = useUser();
+  const [status, setStatus] = useState(null); // { billingStatus, planCode, paidUntil }
+  const [loading, setLoading] = useState(true);
+  const [subscribing, setSubscribing] = useState(null); // plan id currently redirecting
+  const [error, setError] = useState("");
+
+  const PLANS = [
+    { id: "starter", name: "Starter", price: 950, planCode: "PLN_ilx78vdf42i231q", blurb: "For a single service line getting off the ground." },
+    { id: "growth", name: "Growth", price: 2400, planCode: "PLN_capulck131auoc8", blurb: "Multiple services, active funnel and campaign planning." },
+    { id: "agency", name: "Agency", price: 6500, planCode: "PLN_f5h3b4jk0zoppcf", blurb: "Full portfolio, prospecting pipeline, CRM sync." },
+  ];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/billing/status", { headers: { Authorization: `Bearer ${token}` } });
+      const json = await res.json();
+      setStatus(json);
+    } catch {
+      setError("Could not load billing status.");
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function subscribe(plan) {
+    setError("");
+    setSubscribing(plan.id);
+    try {
+      const token = await getToken();
+      const email = user?.primaryEmailAddress?.emailAddress;
+      if (!email) throw new Error("No email on your account");
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planCode: plan.planCode, email }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.authorizationUrl) throw new Error(json.error || "Checkout failed");
+      window.location.href = json.authorizationUrl;
+    } catch (err) {
+      setError(err.message || "Could not start checkout");
+      setSubscribing(null);
+    }
+  }
+
+  const STATUS_LABEL = {
+    trialing: "Trial",
+    active: "Active",
+    past_due: "Payment overdue",
+    suspended: "Suspended",
+    canceled: "Canceled",
+  };
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Billing for {companyName}</h3>
+        {loading ? (
+          <div>Loading…</div>
+        ) : (
+          <div>
+            Current status: <strong>{STATUS_LABEL[status?.billingStatus] || status?.billingStatus}</strong>
+            {status?.planCode ? <span> · plan {PLANS.find(p => p.planCode === status.planCode)?.name || status.planCode}</span> : null}
+            {status?.paidUntil ? <span> · paid until {new Date(status.paidUntil).toLocaleDateString()}</span> : null}
+          </div>
+        )}
+        {error ? <div style={{ color: "var(--red)", marginTop: 8 }}>{error}</div> : null}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        {PLANS.map((plan) => {
+          const isCurrent = status?.planCode === plan.planCode && status?.billingStatus === "active";
+          return (
+            <div className="card" key={plan.id}>
+              <h4 style={{ marginTop: 0 }}>{plan.name}</h4>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>R{plan.price.toLocaleString()}<span style={{ fontSize: 13, fontWeight: 400 }}>/mo</span></div>
+              <p style={{ color: "var(--muted)", fontSize: 13 }}>{plan.blurb}</p>
+              <button
+                className="btn sm"
+                style={{ width: "100%", justifyContent: "center" }}
+                disabled={isCurrent || subscribing === plan.id}
+                onClick={() => subscribe(plan)}
+              >
+                {isCurrent ? "Current plan" : subscribing === plan.id ? "Redirecting…" : "Subscribe"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /* ---------------------------------------------------------------- business plan & strategy */
 const RM_STATUS = ["Pending", "In progress", "Done"];
