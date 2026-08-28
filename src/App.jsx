@@ -555,7 +555,20 @@ function AppShell({ savedData }) {
   const { signOut } = useClerk();
   const { organization } = useOrganization();
   const companyName = organization?.name || "your company";
-  const [tab, setTab] = useState("dash");
+  // Supports landing on a specific tab after an external redirect (e.g. Paystack's
+  // checkout callback_url lands on ?tab=billing) — doesn't imply anything about what
+  // happened before the redirect, just which tab renders first.
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "dash";
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    const validIds = ["dash", "inputs", "portfolio", "rev", "funnel", "opt", "res", "camp", "play", "prospect", "crm", "mis", "plan", "billing"];
+    return validIds.includes(requested) ? requested : "dash";
+  });
+  useEffect(() => {
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
   const [saveMsg, setSaveMsg] = useState("");
   const _saved = savedData || {};
   const [portfolioItems, setPortfolioItems] = useState(() => initPortfolioItems(_saved.portfolioItems));

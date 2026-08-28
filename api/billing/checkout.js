@@ -33,6 +33,14 @@ export default async function handler(req, res) {
     // amount omitted deliberately: Paystack derives it from the plan when `plan` is
     // given, and pulling this checkpoint's throwaway daily-cycle plan's amount in here
     // would just be duplicating a number Paystack already has as the source of truth.
+    //
+    // callback_url is derived from the request itself (not a hardcoded production
+    // domain) so checkout initiated from a Preview deployment redirects back to that
+    // same Preview URL, not production — avoids yet another Preview/production
+    // mismatch. Lands on the Billing tab via ?tab=billing; the redirect itself doesn't
+    // assert success, it just gets the person back to the page whose existing
+    // status-fetch-on-load logic shows whatever the webhook has actually confirmed.
+    const origin = req.headers.origin || `https://${req.headers.host}`;
     const resp = await fetch('https://api.paystack.co/transaction/initialize', {
       method: 'POST',
       headers: {
@@ -43,6 +51,7 @@ export default async function handler(req, res) {
         email,
         plan: planCode,
         metadata: { tenant_id: auth.orgId, plan_code: planCode },
+        callback_url: `${origin}/?tab=billing`,
       }),
     });
     const json = await resp.json();
