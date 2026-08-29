@@ -1741,6 +1741,7 @@ const PROMO_METHODS = [
 ];
 
 function Campaign({ svcs, calendar, setCalendar, companyName }) {
+  const { getToken } = useAuth();
   const [service, setService] = useState(svcs[0]?.name || "");
   const svcObj = svcs.find((x) => x.name === service) || svcs[0];
   const chanToPlatform = { LinkedIn: "LinkedIn", Meta: "Facebook", Google: "LinkedIn", Email: "LinkedIn", Referral: "LinkedIn" };
@@ -1770,15 +1771,20 @@ Geography: ${svcObj?.mkt?.geo || "the target market"}
 Respond with ONLY valid JSON, no markdown, no code fences, using exactly these keys:
 {"post":"the full caption/copy ready to publish","hashtags":["array","of","hashtags without the # symbol"],"bestTime":"best day + time to publish for this platform and audience","frequency":"recommended posting cadence for this objective","rationale":"1-2 sentences on why this timing and channel fit the objective"}`;
     try {
+      const token = await getToken();
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
       });
       const data = await res.json();
       const text = data.content.map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(text);
       setCalendar((c) => [{ id: Date.now(), service, platform, objective, ...parsed }, ...c]);
+      getToken().then((token) =>
+        fetch("/api/usage/campaign-draft", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      ).then((r) => { if (!r.ok) console.error("campaign-draft usage increment failed", r.status); })
+       .catch((e) => console.error("campaign-draft usage increment failed", e));
     } catch (e) {
       setErr("Couldn't generate this post. Try again in a moment.");
     } finally {
@@ -1962,6 +1968,7 @@ const RM_STATUS = ["Pending", "In progress", "Done"];
 const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
 
 function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans, companyName, vision, swot, pillars, focusAvoid, bizModels, ansoff, partners }) {
+  const { getToken } = useAuth();
   const [view, setView] = useState("goals");
   const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
   const updComp = (id, k, v) => setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, [k]: v } : c)));
@@ -1995,9 +2002,10 @@ Then respond with ONLY valid JSON, no markdown fences, no preamble, exactly this
 {"summary":"2-3 sentence overview of what is happening right now","trends":[{"trend":"short trend name","detail":"1-2 sentences on what is happening, citing specifics found in the search","impact":"High|Medium|Low","effect":"Opportunity|Threat|Both","implication":"1-2 sentences on what this means for ${name} specifically given its profile","adjustment":"one concrete action ${name} should take in response"}]}
 Return exactly 5 trends, ranked most important first.`;
     try {
+      const token = await getToken();
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 3000,
@@ -2012,6 +2020,10 @@ Return exactly 5 trends, ranked most important first.`;
       const newScan = { id: Date.now(), area: trendArea, at: new Date().toLocaleString(), ...parsed };
       setScans((prev) => [newScan, ...prev].slice(0, 20));
       setActiveScanId(newScan.id);
+      getToken().then((token) =>
+        fetch("/api/usage/trend-radar-scan", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+      ).then((r) => { if (!r.ok) console.error("trend-radar-scan usage increment failed", r.status); })
+       .catch((e) => console.error("trend-radar-scan usage increment failed", e));
     } catch (e) {
       setTrendErr("Scan failed — try again in a moment.");
     } finally { setTrendBusy(false); }
@@ -2871,7 +2883,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
       const token = await getToken();
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 700,
@@ -2985,7 +2997,7 @@ Return up to 8 candidates, best fits first.`;
       const token = await getToken();
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 3000,
