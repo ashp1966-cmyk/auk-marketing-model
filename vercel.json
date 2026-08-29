@@ -3,6 +3,7 @@
     { "source": "/api/(.*)", "destination": "/api/$1" }
   ],
   "crons": [
-    { "path": "/api/cron-follow-up", "schedule": "0 6 * * *" }
+    { "path": "/api/cron-follow-up", "schedule": "0 6 * * *" },
+    { "path": "/api/cron-usage-alert", "schedule": "10 6 * * *" }
   ]
 }

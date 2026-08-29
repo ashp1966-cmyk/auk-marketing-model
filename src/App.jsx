@@ -555,13 +555,32 @@ function AppShell({ savedData }) {
   const { signOut } = useClerk();
   const { organization } = useOrganization();
   const companyName = organization?.name || "your company";
+  // Admin usage view (CLAUDE-CODE-BRIEF-usage-alerting.md Part 1) is only shown to
+  // AUK's own tenant — read once on mount via the existing billing/status endpoint,
+  // which already returns planCode for the caller's own tenant. The server independently
+  // 403s api/admin/usage.js regardless of this flag, so this only controls nav visibility.
+  const [isAdminTenant, setIsAdminTenant] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/billing/status", { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        if (!cancelled) setIsAdminTenant(json?.planCode === "internal");
+      } catch {
+        // Non-fatal — admin nav item simply stays hidden.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [getToken]);
   // Supports landing on a specific tab after an external redirect (e.g. Paystack's
   // checkout callback_url lands on ?tab=billing) — doesn't imply anything about what
   // happened before the redirect, just which tab renders first.
   const [tab, setTab] = useState(() => {
     if (typeof window === "undefined") return "dash";
     const requested = new URLSearchParams(window.location.search).get("tab");
-    const validIds = ["dash", "inputs", "portfolio", "rev", "funnel", "opt", "res", "camp", "play", "prospect", "crm", "mis", "plan", "billing"];
+    const validIds = ["dash", "inputs", "portfolio", "rev", "funnel", "opt", "res", "camp", "play", "prospect", "crm", "mis", "plan", "billing", "admin"];
     return validIds.includes(requested) ? requested : "dash";
   });
   useEffect(() => {
@@ -795,6 +814,7 @@ function AppShell({ savedData }) {
     ["mis", "MIS · Activity", BarChart2],
     ["plan", "Business Plan", Target],
     ["billing", "Billing", CreditCard],
+    ...(isAdminTenant ? [["admin", "Admin · Usage", Shield]] : []),
   ];
 
   return (
@@ -847,6 +867,7 @@ function AppShell({ savedData }) {
           {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} gpPerUnit={gpPerUnit} />}
           {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />}
           {tab === "billing" && <Billing companyName={companyName} />}
+          {tab === "admin" && <AdminUsage />}
         </ErrorBoundary>
       </div>
     </div>
@@ -1959,6 +1980,98 @@ function Billing({ companyName }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// AUK-internal admin view (CLAUDE-CODE-BRIEF-usage-alerting.md Part 1) — every tenant's
+// current-month usage against trial caps. Server (api/admin/usage.js) independently 403s
+// non-internal tenants; the nav item itself is also hidden for them (see AppShell).
+function AdminUsage() {
+  const { getToken } = useAuth();
+  const [tenants, setTenants] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/admin/usage", { headers: { Authorization: `Bearer ${token}` } });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load usage data");
+      setTenants(json.tenants || []);
+    } catch (err) {
+      setError(err.message || "Could not load usage data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const COLS = [
+    ["researchRuns", "Research runs"],
+    ["campaignDrafts", "Campaign drafts"],
+    ["outreachDrafts", "Outreach drafts"],
+    ["trendRadarScans", "Trend Radar scans"],
+    ["emailsSent", "Emails sent"],
+  ];
+
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>Tenant usage (current month)</h3>
+      <p style={{ color: "var(--muted)", fontSize: 13, marginTop: -8 }}>
+        AUK-internal only. Red cells mean a trialing tenant is over its trial cap.
+      </p>
+      {loading ? (
+        <div>Loading…</div>
+      ) : error ? (
+        <div style={{ color: "var(--red)" }}>{error}</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "6px 10px" }}>Tenant</th>
+                <th style={{ textAlign: "left", padding: "6px 10px" }}>Billing status</th>
+                <th style={{ textAlign: "left", padding: "6px 10px" }}>Plan</th>
+                {COLS.map(([key, label]) => (
+                  <th key={key} style={{ textAlign: "right", padding: "6px 10px" }}>{label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tenants.map((t) => (
+                <tr key={t.id} style={{ borderTop: "1px solid var(--navy-700)" }}>
+                  <td style={{ padding: "6px 10px" }}>{t.name}</td>
+                  <td style={{ padding: "6px 10px" }}>{t.billingStatus}</td>
+                  <td style={{ padding: "6px 10px" }}>{t.planCode || "—"}</td>
+                  {COLS.map(([key, _label]) => {
+                    const overKey = key;
+                    const isOver = t.over?.[overKey];
+                    return (
+                      <td
+                        key={key}
+                        style={{
+                          padding: "6px 10px",
+                          textAlign: "right",
+                          background: isOver ? "var(--red)" : "transparent",
+                          color: isOver ? "#fff" : "inherit",
+                          fontWeight: isOver ? 700 : 400,
+                        }}
+                      >
+                        {t[key]}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
