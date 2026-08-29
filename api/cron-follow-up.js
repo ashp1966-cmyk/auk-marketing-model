@@ -130,9 +130,9 @@ export default async function handler(req, res) {
         `;
         if (!DRAFT_DRY_RUN) {
           await sql`
-            insert into tenant_usage (tenant_id, month, ai_drafts)
+            insert into tenant_usage (tenant_id, month, outreach_drafts)
             values (${row.tenant_id}, date_trunc('month', now())::date, 1)
-            on conflict (tenant_id, month) do update set ai_drafts = tenant_usage.ai_drafts + 1
+            on conflict (tenant_id, month) do update set outreach_drafts = tenant_usage.outreach_drafts + 1
           `;
         }
         results.push({ emailId: row.email_id, ok: true });
