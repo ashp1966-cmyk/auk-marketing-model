@@ -8,6 +8,7 @@
 // approved_by being set by a human click.
 import { resolveOrgId } from './_lib/auth.js';
 import { withTenant } from './_lib/db.js';
+import { checkTrialGate } from './_lib/trial-gate.js';
 
 // Same local-only flag as api/_lib/anthropic-client.js and api/send-outreach.js. Checked
 // directly here (not passed by the client) because if the server itself is in dry-run mode,
@@ -52,6 +53,12 @@ export default async function handler(req, res) {
       }
 
       const result = await withTenant(orgId, async (client) => {
+        // Defense-in-depth against a client that already generated the AI response before
+        // getting blocked, or that skips /api/generate's own gate entirely — the real spend
+        // prevention is /api/generate's checkTrialGate call, this one just stops the save.
+        const gate = await checkTrialGate(client, orgId, 'outreach_drafts');
+        if (gate.blocked) return gate;
+
         // Confirm the prospect actually belongs to this tenant before attaching a draft to it.
         const { rows: [prospect] } = await client.query(
           'select id, contact_email from prospects where id = $1 and tenant_id = $2',

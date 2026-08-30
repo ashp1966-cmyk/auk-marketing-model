@@ -6,6 +6,7 @@
 // /api/generate response. Same shape as api/outreach.js's POST increment.
 import { resolveOrgId } from '../_lib/auth.js';
 import { withTenant } from '../_lib/db.js';
+import { checkTrialGate } from '../_lib/trial-gate.js';
 
 // Same local-only flag as api/_lib/anthropic-client.js and api/outreach.js — when the
 // server itself is in dry-run mode, the draft the client just generated came from
@@ -28,7 +29,14 @@ export default async function handler(req, res) {
       return res.status(200).json({ campaignDrafts: null, dryRun: true });
     }
 
-    const count = await withTenant(orgId, async (client) => {
+    const result = await withTenant(orgId, async (client) => {
+      // Defense-in-depth against a client that already generated the AI response before
+      // getting blocked, or that skips /api/generate's own gate entirely — the real spend
+      // prevention is /api/generate's checkTrialGate call, this one just stops the count
+      // (and thus the draft, which the client only keeps once this call succeeds).
+      const gate = await checkTrialGate(client, orgId, 'campaign_drafts');
+      if (gate.blocked) return gate;
+
       const { rows: [row] } = await client.query(
         `insert into tenant_usage (tenant_id, month, campaign_drafts)
          values ($1, date_trunc('month', now())::date, 1)
@@ -36,10 +44,10 @@ export default async function handler(req, res) {
          returning campaign_drafts`,
         [orgId]
       );
-      return row.campaign_drafts;
+      return { status: 200, body: { campaignDrafts: row.campaign_drafts, dryRun: false } };
     });
 
-    return res.status(200).json({ campaignDrafts: count, dryRun: false });
+    return res.status(result.status).json(result.body);
   } catch (err) {
     return res.status(500).json({ error: 'Database operation failed', detail: err.message });
   }

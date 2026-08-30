@@ -35,7 +35,7 @@ async function searchOne(token, objectType, propertyName, value) {
   return null;
 }
 
-async function findOrCreateCompany(token, companyName, domain) {
+async function findOrCreateCompany(token, companyName, domain, website) {
   const existing = domain
     ? await searchOne(token, 'companies', 'domain', domain)
     : await searchOne(token, 'companies', 'name', companyName);
@@ -43,6 +43,10 @@ async function findOrCreateCompany(token, companyName, domain) {
 
   const properties = { name: companyName };
   if (domain) properties.domain = domain;
+  // `website` is HubSpot's own standard Company property, distinct from `domain`
+  // (which drives the find-or-create search/de-dup above) — write-only here, not
+  // used as a search key.
+  if (website) properties.website = website;
   const { ok, data } = await hubspotFetch(token, '/crm/v3/objects/companies', {
     method: 'POST',
     body: JSON.stringify({ properties }),
@@ -93,7 +97,7 @@ export default async function handler(req, res) {
     const { token, pending } = await withTenant(orgId, async (client) => {
       const tenantRow = await client.query('select hubspot_token from tenants where id = $1', [orgId]);
       const { rows } = await client.query(
-        `select id, company_name, contact_name, contact_email
+        `select id, company_name, contact_name, contact_email, website
          from prospects
          where tenant_id = $1 and status = 'new'
          order by id asc
@@ -111,7 +115,7 @@ export default async function handler(req, res) {
     for (const p of pending) {
       try {
         const domain = p.contact_email ? p.contact_email.split('@')[1] : null;
-        const companyId = await findOrCreateCompany(token, p.company_name, domain);
+        const companyId = await findOrCreateCompany(token, p.company_name, domain, p.website);
 
         let contactId = null;
         if (p.contact_email) {

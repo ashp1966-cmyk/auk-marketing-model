@@ -1,5 +1,7 @@
 // Build: 2026-08-15T05:51:01Z
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import { useAuth, useClerk, useOrganization, useUser, SignIn } from "@clerk/clerk-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8,7 +10,7 @@ import {
 import {
   Compass, LayoutDashboard, SlidersHorizontal, TrendingUp,
   Users, Megaphone, Radar, Sparkles, Plus, Trash2, Calendar, Clock,
-  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search, Mail, Check, CreditCard,
+  Repeat, Hash, Loader2, ChevronRight, Filter, Package, Map, Gauge, LogOut, BarChart2, TrendingDown, Save, Download, Target, Shield, Rocket, ListChecks, PieChart, Search, Mail, Check, CreditCard, UploadCloud, X,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------- brand logo */
@@ -134,6 +136,126 @@ const Rk = (n) => {
 const pct = (n) => (n * 100).toFixed(1) + "%";
 const marginColor = (m) => (m >= 0.4 ? "var(--green)" : m >= 0.25 ? "var(--amber)" : "var(--red)");
 const BARCLR = ["#3D9BC4", "#2BAABF", "#5B9BC9", "#6f9bd1", "#16A34A", "#b98acb"];
+
+// Extracts a human-readable message from a failed /api/generate response. Two different
+// shapes can land here: our own trial-gate/validation errors (flat `message` or `error`
+// string — e.g. { error: "trial_cap_reached", message: "You've used all..." }) and
+// Anthropic's own error responses passed straight through unmodified (nested — e.g.
+// { error: { type: "authentication_error", message: "API key is invalid." } }). Checking
+// only a flat `data.error` would stringify Anthropic's nested object to "[object Object]".
+function apiErrorMessage(data, fallback) {
+  if (typeof data?.message === "string") return data.message;
+  if (typeof data?.error === "string") return data.error;
+  if (typeof data?.error?.message === "string") return data.error.message;
+  return fallback;
+}
+
+// Extracts the first complete top-level JSON object from a model response, tolerating any
+// leading or trailing prose the model adds around it (e.g. citations after a web_search
+// call, or unprompted commentary) — finds the opening brace, then walks forward tracking
+// brace depth (skipping over quoted strings/escapes, so a "}" inside a string value isn't
+// mistaken for the object's own close) to find that SAME object's matching closing brace,
+// rather than assuming everything after the opening brace is valid JSON.
+function extractJson(text) {
+  const start = text.indexOf("{");
+  if (start === -1) throw new Error("No JSON object found in response");
+  let depth = 0, inString = false, escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return JSON.parse(text.slice(start, i + 1));
+    }
+  }
+  throw new Error("Unterminated JSON object in response");
+}
+
+/* ---------------------------------------------------------------- manual prospect upload */
+const UPLOAD_MAX_ROWS = 500;
+const UPLOAD_FIELD_ALIASES = {
+  company: ["company", "company name", "organisation", "organization", "org"],
+  email: ["email", "contact email", "e-mail", "email address"],
+  name: ["name", "contact name", "contact"],
+  website: ["website", "company website", "url", "web address", "domain", "site"],
+};
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Parses a CSV/XLSX File into { headers, rows, truncated }, entirely client-side.
+// Never throws to the caller — wrap in try/catch anyway, since a crafted file can still
+// make the parser itself throw (see xlsx's known ReDoS/prototype-pollution advisories).
+async function parseUploadFile(file) {
+  const isCsv = /\.csv$/i.test(file.name);
+  let table; // string[][]
+  if (isCsv) {
+    const text = await file.text();
+    const result = Papa.parse(text, { skipEmptyLines: true });
+    if (result.errors?.length && (!result.data || result.data.length === 0)) {
+      throw new Error("Couldn't read this file — try re-exporting it or use a different format.");
+    }
+    table = result.data;
+  } else {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    table = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+  }
+  if (!table || table.length === 0) throw new Error("This file has no rows.");
+  const headers = (table[0] || []).map((h) => String(h ?? "").trim());
+  const dataRows = table.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== ""));
+  const truncated = dataRows.length > UPLOAD_MAX_ROWS;
+  return { headers, rows: (truncated ? dataRows.slice(0, UPLOAD_MAX_ROWS) : dataRows), truncated, totalRows: dataRows.length };
+}
+
+// For each logical field (company/email/name), finds header indices whose normalized text
+// matches one of that field's aliases. A field is "confidently" mapped only when exactly
+// one header matches — zero (absent) or 2+ (ambiguous) both fall through to manual mapping.
+function autoDetectMapping(headers) {
+  const norm = headers.map((h) => h.trim().toLowerCase());
+  const matches = {};
+  for (const field of Object.keys(UPLOAD_FIELD_ALIASES)) {
+    matches[field] = norm
+      .map((h, i) => (UPLOAD_FIELD_ALIASES[field].includes(h) ? i : -1))
+      .filter((i) => i !== -1);
+  }
+  const confident = matches.company.length === 1 && matches.email.length === 1;
+  return {
+    confident,
+    mapping: confident
+      ? {
+          company: matches.company[0], email: matches.email[0],
+          name: matches.name.length === 1 ? matches.name[0] : null,
+          website: matches.website.length === 1 ? matches.website[0] : null,
+        }
+      : {
+          company: matches.company[0] ?? null, email: matches.email[0] ?? null,
+          name: matches.name[0] ?? null, website: matches.website[0] ?? null,
+        },
+  };
+}
+
+// Applies a { company, email, name } column-index mapping to raw rows, validating each one.
+// Returns { accepted, skippedCount, skipReasons } — never drops a row silently.
+function validateUploadRows(rows, mapping) {
+  const accepted = [];
+  const skipReasons = {};
+  const bump = (reason) => { skipReasons[reason] = (skipReasons[reason] || 0) + 1; };
+  for (const row of rows) {
+    const company_name = mapping.company != null ? String(row[mapping.company] ?? "").trim() : "";
+    const contact_email = mapping.email != null ? String(row[mapping.email] ?? "").trim() : "";
+    const contact_name = mapping.name != null ? String(row[mapping.name] ?? "").trim() : "";
+    const website = mapping.website != null ? String(row[mapping.website] ?? "").trim() : "";
+    if (!company_name) { bump("missing company name"); continue; }
+    if (!EMAIL_RE.test(contact_email)) { bump("invalid email"); continue; }
+    accepted.push({ company_name, contact_email, contact_name: contact_name || null, website: website || null });
+  }
+  const skippedCount = Object.values(skipReasons).reduce((a, b) => a + b, 0);
+  return { accepted, skippedCount, skipReasons };
+}
 
 /* Generic new-tenant starting point — fictional placeholder services & round numbers, all editable.
    A saved tenant_data row overrides this entirely (see AppShell's `_saved.svcs || SEED`). */
@@ -574,6 +696,25 @@ function AppShell({ savedData }) {
     })();
     return () => { cancelled = true; };
   }, [getToken]);
+  // Trial gate status (CLAUDE-CODE-BRIEF-trial-gating.md Step 4) — UX guidance only, so a
+  // failed/slow fetch simply leaves tabs ungated rather than blocking the UI; the real
+  // security boundary is server-side (api/_lib/trial-gate.js, enforced in api/generate.js
+  // and the four feature endpoints), not this fetch.
+  const [trialStatus, setTrialStatus] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/trial-status", { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        if (!cancelled && res.ok) setTrialStatus(json);
+      } catch {
+        // Non-fatal — see comment above.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [getToken]);
   // Supports landing on a specific tab after an external redirect (e.g. Paystack's
   // checkout callback_url lands on ?tab=billing) — doesn't imply anything about what
   // happened before the redirect, just which tab renders first.
@@ -817,6 +958,13 @@ function AppShell({ savedData }) {
     ...(isAdminTenant ? [["admin", "Admin · Usage", Shield]] : []),
   ];
 
+  // Trial-gated tabs (Step 4 of CLAUDE.md's trial-gating brief) — everything except
+  // Dashboard, Inputs, Portfolio, Revenue & Margins, and Billing, which stay open
+  // regardless of billing_status.
+  const GATED_TABS = new Set(["funnel", "opt", "res", "camp", "play", "prospect", "crm", "mis", "plan"]);
+  const trialLocked = !!trialStatus?.blocked;
+  const gated = (id, node) => (GATED_TABS.has(id) && trialLocked ? <TrialLockedBanner trialStatus={trialStatus} onGoToBilling={() => setTab("billing")} /> : node);
+
   return (
     <div className="aukm">
       <style>{CSS}</style>
@@ -845,7 +993,8 @@ function AppShell({ savedData }) {
 
       <div className="nav">
         {NAV.map(([id, label, Icon]) => (
-          <button key={id} className={"navb" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>
+          <button key={id} className={"navb" + (tab === id ? " on" : "")} onClick={() => setTab(id)}
+            style={GATED_TABS.has(id) && trialLocked ? { opacity: 0.45 } : undefined}>
             <Icon size={16} /> {label}
           </button>
         ))}
@@ -857,19 +1006,39 @@ function AppShell({ savedData }) {
           {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} onAddService={addService} onToggleActive={toggleServiceActive} onDeleteService={deleteService} />}
           {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} portfolioMeta={portfolioMeta} />}
           {tab === "rev" && <Revenue calc={calc} />}
-          {tab === "funnel" && <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />}
-          {tab === "opt" && <BudgetOptimizer svcs={svcs} fc={funnelCalc} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />}
-          {tab === "res" && <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />}
-          {tab === "camp" && <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} companyName={companyName} />}
-          {tab === "play" && <Playbook />}
-          {tab === "prospect" && <Prospecting svcs={svcs} companyName={companyName} />}
-          {tab === "crm" && <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />}
-          {tab === "mis" && <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} gpPerUnit={gpPerUnit} />}
-          {tab === "plan" && <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />}
+          {tab === "funnel" && gated("funnel", <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />)}
+          {tab === "opt" && gated("opt", <BudgetOptimizer svcs={svcs} fc={funnelCalc} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />)}
+          {tab === "res" && gated("res", <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />)}
+          {tab === "camp" && gated("camp", <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} companyName={companyName} />)}
+          {tab === "play" && gated("play", <Playbook />)}
+          {tab === "prospect" && gated("prospect", <Prospecting svcs={svcs} companyName={companyName} />)}
+          {tab === "crm" && gated("crm", <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />)}
+          {tab === "mis" && gated("mis", <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} gpPerUnit={gpPerUnit} />)}
+          {tab === "plan" && gated("plan", <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />)}
           {tab === "billing" && <Billing companyName={companyName} />}
           {tab === "admin" && <AdminUsage />}
         </ErrorBoundary>
       </div>
+    </div>
+  );
+}
+
+// Shown in place of a gated tab's real content once the trial has ended or a usage cap is
+// hit (CLAUDE-CODE-BRIEF-trial-gating.md Step 4/5) — UX guidance only, not the real gate
+// (that's server-side). Distinguishes trial-ended from cap-reached per Step 5, since those
+// are different situations that shouldn't collapse into one generic locked-out message.
+function TrialLockedBanner({ trialStatus, onGoToBilling }) {
+  const hitCaps = Object.values(trialStatus?.perFeature || {}).filter((f) => f.blocked);
+  const expired = !!trialStatus?.expired;
+  return (
+    <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+      <h3 style={{ margin: 0 }}>{expired ? "Your trial has ended" : "Trial limit reached"}</h3>
+      <p style={{ color: "var(--slate)", marginTop: 8, maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>
+        {expired
+          ? "Your 7-day trial has ended — subscribe to continue."
+          : `You've used all your trial ${hitCaps.map((f) => `${f.label} (${f.used}/${f.cap})`).join(", ")} — subscribe to continue.`}
+      </p>
+      <button className="btn" style={{ marginTop: 16 }} onClick={onGoToBilling}>Go to Billing</button>
     </div>
   );
 }
@@ -1796,18 +1965,26 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }], feature: "campaign_drafts" }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't generate this post"));
       const text = data.content.map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(text);
-      setCalendar((c) => [{ id: Date.now(), service, platform, objective, ...parsed }, ...c]);
-      getToken().then((token) =>
-        fetch("/api/usage/campaign-draft", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
-      ).then((r) => { if (!r.ok) console.error("campaign-draft usage increment failed", r.status); })
-       .catch((e) => console.error("campaign-draft usage increment failed", e));
+      const parsed = extractJson(text);
+      const entry = { id: Date.now(), service, platform, objective, ...parsed };
+      setCalendar((c) => [entry, ...c]);
+
+      const usageRes = await fetch("/api/usage/campaign-draft", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      if (!usageRes.ok) {
+        // Cap was reached between /api/generate's own check and this call (or the client
+        // bypassed generate.js's check somehow) — don't leave the draft it already added
+        // sitting in the calendar as if it were a real, counted draft.
+        const usageJson = await usageRes.json().catch(() => ({}));
+        setCalendar((c) => c.filter((x) => x.id !== entry.id));
+        throw new Error(usageJson.message || usageJson.error || "Couldn't save this draft");
+      }
     } catch (e) {
-      setErr("Couldn't generate this post. Try again in a moment.");
+      setErr(e.message || "Couldn't generate this post. Try again in a moment.");
     } finally {
       setLoading(false);
     }
@@ -2124,21 +2301,29 @@ Return exactly 5 trends, ranked most important first.`;
           max_tokens: 3000,
           messages: [{ role: "user", content: prompt }],
           tools: [{ type: "web_search_20250305", name: "web_search" }],
+          feature: "trend_radar_scans",
         }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Scan failed"));
       const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
-      const jsonStart = text.indexOf("{");
-      const parsed = JSON.parse(text.slice(jsonStart));
+      const parsed = extractJson(text);
       const newScan = { id: Date.now(), area: trendArea, at: new Date().toLocaleString(), ...parsed };
       setScans((prev) => [newScan, ...prev].slice(0, 20));
       setActiveScanId(newScan.id);
-      getToken().then((token) =>
-        fetch("/api/usage/trend-radar-scan", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
-      ).then((r) => { if (!r.ok) console.error("trend-radar-scan usage increment failed", r.status); })
-       .catch((e) => console.error("trend-radar-scan usage increment failed", e));
+
+      const usageRes = await fetch("/api/usage/trend-radar-scan", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      if (!usageRes.ok) {
+        // Cap was reached between /api/generate's own check and this call (or the client
+        // bypassed generate.js's check somehow) — don't leave the scan it already added
+        // sitting in state as if it were a real, counted scan.
+        const usageJson = await usageRes.json().catch(() => ({}));
+        setScans((prev) => prev.filter((x) => x.id !== newScan.id));
+        setActiveScanId((id) => (id === newScan.id ? null : id));
+        throw new Error(usageJson.message || usageJson.error || "Couldn't save this scan");
+      }
     } catch (e) {
-      setTrendErr("Scan failed — try again in a moment.");
+      setTrendErr(e.message || "Scan failed — try again in a moment.");
     } finally { setTrendBusy(false); }
   };
 
@@ -2883,11 +3068,122 @@ function Prospecting({ svcs, companyName }) {
   const [serviceId, setServiceId] = useState(() => activeSvcs[0]?.id ?? null);
   const service = activeSvcs.find((s) => s.id === serviceId) || activeSvcs[0] || null;
 
+  // Separate from `service` above (which always resolves to a real service for AI
+  // research, which requires one) — uploads may deliberately have none, so "" is a
+  // real, distinct state here, not just a loading placeholder.
+  const [uploadServiceId, setUploadServiceId] = useState("");
+  const uploadService = uploadServiceId ? activeSvcs.find((s) => s.id === Number(uploadServiceId)) || null : null;
+
   const [runs, setRuns] = useState([]);
   const [runsLoaded, setRunsLoaded] = useState(false);
   const [activeRunId, setActiveRunId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  const [mode, setMode] = useState("ai"); // "ai" | "upload"
+  const [uploadFile, setUploadFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const uploadInputRef = useRef(null);
+
+  const [uploadParsing, setUploadParsing] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+  const [uploadHeaders, setUploadHeaders] = useState([]);
+  const [uploadRows, setUploadRows] = useState([]);
+  const [uploadTruncatedFrom, setUploadTruncatedFrom] = useState(null); // original row count, if truncated
+  const [uploadMapping, setUploadMapping] = useState({ company: null, email: null, name: null, website: null });
+  const [uploadNeedsMapping, setUploadNeedsMapping] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null); // { accepted, skippedCount, skipReasons }
+
+  const resetUploadState = () => {
+    setUploadErr("");
+    setUploadHeaders([]); setUploadRows([]); setUploadTruncatedFrom(null);
+    setUploadMapping({ company: null, email: null, name: null, website: null });
+    setUploadNeedsMapping(false);
+    setUploadResult(null);
+  };
+
+  const pickUploadFile = (file) => {
+    if (!file) return;
+    const okExt = /\.(csv|xlsx)$/i.test(file.name);
+    if (!okExt) { setErr("Please choose a .csv or .xlsx file."); return; }
+    setErr("");
+    resetUploadState();
+    setUploadFile(file);
+  };
+
+  const runValidation = useCallback((rows, mapping) => {
+    setUploadResult(validateUploadRows(rows, mapping));
+  }, []);
+
+  useEffect(() => {
+    if (!uploadFile) return;
+    let cancelled = false;
+    (async () => {
+      setUploadParsing(true);
+      setUploadErr("");
+      try {
+        const { headers, rows, truncated, totalRows } = await parseUploadFile(uploadFile);
+        if (cancelled) return;
+        setUploadHeaders(headers);
+        setUploadRows(rows);
+        setUploadTruncatedFrom(truncated ? totalRows : null);
+        const { confident, mapping } = autoDetectMapping(headers);
+        setUploadMapping(mapping);
+        if (confident) {
+          setUploadNeedsMapping(false);
+          runValidation(rows, mapping);
+        } else {
+          setUploadNeedsMapping(true);
+          setUploadResult(null);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setUploadErr(e.message || "Couldn't read this file — try re-exporting it or use a different format.");
+        setUploadFile(null);
+      } finally {
+        if (!cancelled) setUploadParsing(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [uploadFile, runValidation]);
+
+  const confirmMapping = () => {
+    setUploadNeedsMapping(false);
+    runValidation(uploadRows, uploadMapping);
+  };
+
+  const [importBusy, setImportBusy] = useState(false);
+  const [importErr, setImportErr] = useState("");
+
+  const importUpload = async () => {
+    if (!uploadResult?.accepted?.length) return;
+    setImportBusy(true); setImportErr("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/prospects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          serviceName: uploadService?.name || null,
+          criteria: { source: "manual_upload", filename: uploadFile?.name || null },
+          candidates: uploadResult.accepted,
+          source: "manual_upload",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || json.error || "Import failed");
+
+      setRuns((prev) => [json.run, ...prev].slice(0, 20));
+      setActiveRunId(json.run.id);
+      setUploadFile(null);
+      resetUploadState();
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+    } catch (e) {
+      setImportErr(e.message || "Import failed — try again in a moment.");
+    } finally {
+      setImportBusy(false);
+    }
+  };
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
 
@@ -2946,6 +3242,46 @@ function Prospecting({ svcs, companyName }) {
   const [sendingId, setSendingId] = useState(null);
   const [sendErr, setSendErr] = useState("");
 
+  // Inline "which service?" picker for a prospect whose run has no service of its
+  // own (uploaded without one) and that hasn't had a service chosen for it yet.
+  const [pickingServiceFor, setPickingServiceFor] = useState(null); // prospect id, or null
+  const [pickServiceValue, setPickServiceValue] = useState("");
+  const [pickServiceBusy, setPickServiceBusy] = useState(false);
+
+  const startDraftOutreach = (prospect) => {
+    const resolvedName = prospect.service_name || run?.service_name;
+    if (resolvedName) { draftOutreach(prospect); return; }
+    setPickingServiceFor(prospect.id);
+    setPickServiceValue(activeSvcs[0]?.id ?? "");
+  };
+
+  const confirmPickedService = async (prospect) => {
+    const chosen = activeSvcs.find((s) => s.id === Number(pickServiceValue));
+    if (!chosen) return;
+    setPickServiceBusy(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/prospects", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: prospect.id, serviceName: chosen.name }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Couldn't save the chosen service");
+      setRuns((prev) => prev.map((r) => (
+        r.id === run.id
+          ? { ...r, prospects: r.prospects.map((p) => (p.id === prospect.id ? { ...p, service_name: chosen.name } : p)) }
+          : r
+      )));
+      setPickingServiceFor(null);
+      draftOutreach({ ...prospect, service_name: chosen.name }, chosen.name);
+    } catch (e) {
+      setDraftErr(e.message || "Couldn't save the chosen service — try again.");
+    } finally {
+      setPickServiceBusy(false);
+    }
+  };
+
   const loadDrafts = useCallback(async () => {
     try {
       const token = await getToken();
@@ -2967,16 +3303,23 @@ function Prospecting({ svcs, companyName }) {
     return m;
   }, {});
 
-  const draftOutreach = async (prospect) => {
+  const draftOutreach = async (prospect, serviceNameOverride) => {
     // is_peer prospects (their own core business overlaps with the service being pitched)
     // have no valid pitch — the core service is wrong for them (they're a competitor in it,
     // not a customer) and there's no cross-sell fallback (see comment above this component).
     if (!prospect.contact_email || prospect.is_peer) return;
+    // Resolution order: an explicit choice just made at draft time, then a service already
+    // saved on this prospect (from a prior draft-time choice), then the run's own service
+    // (the normal case — every AI-research run and most uploads have one). No fallback to
+    // the AI-research section's globally-selected `service` — that dropdown belongs to a
+    // different mode and would silently leak the wrong service into an upload draft.
+    const resolvedName = serviceNameOverride || prospect.service_name || run?.service_name;
+    if (!resolvedName) return; // caller must resolve a service before calling this
     setDraftingId(prospect.id); setDraftErr("");
-    const draftSvc = activeSvcs.find((s) => s.name === run?.service_name) || service;
+    const draftSvc = activeSvcs.find((s) => s.name === resolvedName);
     const segments = draftSvc?.mkt?.segments || [];
     const name = companyName || "the company";
-    const prompt = `You are a business development rep for ${name}, writing a cold outreach email for the service "${draftSvc?.name || run?.service_name || ""}".
+    const prompt = `You are a business development rep for ${name}, writing a cold outreach email for the service "${draftSvc?.name || resolvedName}".
 
 Prospect company: ${prospect.company_name}
 Prospect contact: ${prospect.contact_name || "(no named contact — address the company generally)"}
@@ -3001,11 +3344,13 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
           model: "claude-sonnet-4-6",
           max_tokens: 700,
           messages: [{ role: "user", content: prompt }],
+          feature: "outreach_drafts",
         }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't draft this email"));
       const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(text.slice(text.indexOf("{")));
+      const parsed = extractJson(text);
       if (!parsed.subject || !parsed.body) throw new Error("Incomplete draft");
 
       const saveRes = await fetch("/api/outreach", {
@@ -3014,11 +3359,11 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
         body: JSON.stringify({ prospectId: prospect.id, subject: parsed.subject, body: parsed.body }),
       });
       const saveJson = await saveRes.json();
-      if (!saveRes.ok) throw new Error(saveJson.error || "Save failed");
+      if (!saveRes.ok) throw new Error(saveJson.message || saveJson.error || "Save failed");
 
       setDrafts((prev) => [saveJson.draft, ...prev]);
     } catch (e) {
-      setDraftErr("Couldn't draft this email — try again in a moment.");
+      setDraftErr(e.message || "Couldn't draft this email — try again in a moment.");
     } finally {
       setDraftingId(null);
     }
@@ -3118,12 +3463,13 @@ Return up to 8 candidates, best fits first.`;
           // Capped — uncapped web_search lets Claude search as many times as it
           // decides it needs per run, which is where unpredictable cost comes from.
           tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+          feature: "research_runs",
         }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Research failed"));
       const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
-      const jsonStart = text.indexOf("{");
-      const parsed = JSON.parse(text.slice(jsonStart));
+      const parsed = extractJson(text);
 
       // Rough cost estimate from the response's usage block — Sonnet-family list
       // pricing plus $0.01/search, for visibility only, not exact billing.
@@ -3146,12 +3492,12 @@ Return up to 8 candidates, best fits first.`;
         }),
       });
       const saveJson = await saveRes.json();
-      if (!saveRes.ok) throw new Error(saveJson.error || "Save failed");
+      if (!saveRes.ok) throw new Error(saveJson.message || saveJson.error || "Save failed");
 
       setRuns((prev) => [saveJson.run, ...prev].slice(0, 20));
       setActiveRunId(saveJson.run.id);
     } catch (e) {
-      setErr("Research failed — try again in a moment.");
+      setErr(e.message || "Research failed — try again in a moment.");
     } finally {
       setBusy(false);
     }
@@ -3221,27 +3567,208 @@ Return up to 8 candidates, best fits first.`;
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="grid g2">
-          <div className="field">
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <button className={"navb" + (mode === "ai" ? " on" : "")} onClick={() => setMode("ai")}>
+            <Search size={13} style={{ verticalAlign: -2, marginRight: 5 }} /> Run AI research
+          </button>
+          <button className={"navb" + (mode === "upload" ? " on" : "")} onClick={() => setMode("upload")}>
+            <UploadCloud size={13} style={{ verticalAlign: -2, marginRight: 5 }} /> Upload your own list
+          </button>
+        </div>
+
+        {mode === "ai" && (
+          <div className="field" style={{ marginBottom: 14 }}>
             <label>Service to prospect for</label>
             <select className="sel" value={service?.id ?? ""} onChange={(e) => setServiceId(Number(e.target.value))}>
               {activeSvcs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
-            <button className="btn" onClick={runResearch} disabled={busy || !service}>
-              {busy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Researching…</> : <><Search size={16} /> Run research</>}
-            </button>
-            {err && <span style={{ color: "var(--red)", fontSize: 13 }}>{err}</span>}
+        )}
+        {mode === "upload" && (
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label>Service to prospect for (optional)</label>
+            <select className="sel" value={uploadServiceId} onChange={(e) => setUploadServiceId(e.target.value)}>
+              <option value="">No service — choose per contact when drafting</option>
+              {activeSvcs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
           </div>
-        </div>
-        <div className="hint" style={{ marginTop: 10 }}>
-          Est. cost per run: ~$0.05–0.30 (up to 5 web searches, capped) — a rough guide, not a guarantee; check the actual figure shown on each saved run below.
-        </div>
-        {service && (
-          <div className="hint" style={{ marginTop: 10 }}>
-            Audience: {service.mkt?.audience || "(none set on this service — Inputs tab)"} · Geo: {service.mkt?.geo || "South Africa"}
-          </div>
+        )}
+
+        {mode === "ai" && (
+          <>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+              <button className="btn" onClick={runResearch} disabled={busy || !service}>
+                {busy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Researching…</> : <><Search size={16} /> Run research</>}
+              </button>
+              {err && <span style={{ color: "var(--red)", fontSize: 13 }}>{err}</span>}
+            </div>
+            <div className="hint" style={{ marginTop: 10 }}>
+              Est. cost per run: ~$0.05–0.30 (up to 5 web searches, capped) — a rough guide, not a guarantee; check the actual figure shown on each saved run below.
+            </div>
+            {service && (
+              <div className="hint" style={{ marginTop: 10 }}>
+                Audience: {service.mkt?.audience || "(none set on this service — Inputs tab)"} · Geo: {service.mkt?.geo || "South Africa"}
+              </div>
+            )}
+          </>
+        )}
+
+        {mode === "upload" && (
+          <>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".csv,.xlsx"
+              style={{ display: "none" }}
+              onChange={(e) => pickUploadFile(e.target.files?.[0])}
+            />
+            <div
+              onClick={() => uploadInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                pickUploadFile(e.dataTransfer.files?.[0]);
+              }}
+              style={{
+                border: `1px dashed ${dragOver ? "var(--brass)" : "var(--slate)"}`,
+                borderStyle: dragOver ? "solid" : "dashed",
+                borderRadius: 10,
+                padding: "28px 16px",
+                textAlign: "center",
+                cursor: "pointer",
+                background: dragOver ? "rgba(191, 149, 63, 0.08)" : "transparent",
+                transition: "background 0.15s, border-color 0.15s",
+              }}
+            >
+              <UploadCloud size={22} style={{ opacity: 0.6, marginBottom: 8 }} />
+              <div style={{ fontSize: 14 }}>Drop a .csv or .xlsx file here, or click to browse</div>
+            </div>
+            <div className="hint" style={{ marginTop: 10 }}>
+              Accepted: .csv, .xlsx · up to 500 rows per upload · required columns: company name, contact email.
+            </div>
+            {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 8 }}>{err}</div>}
+            {uploadFile && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+                <span className="pill" style={{ background: "var(--navy-700)" }}>
+                  {uploadFile.name} · {(uploadFile.size / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => { setUploadFile(null); resetUploadState(); if (uploadInputRef.current) uploadInputRef.current.value = ""; }}
+                >
+                  <X size={13} style={{ verticalAlign: -2 }} /> Remove
+                </button>
+              </div>
+            )}
+
+            {uploadParsing && (
+              <div className="hint" style={{ marginTop: 12 }}><Loader2 size={13} style={{ animation: "spin 1s linear infinite", verticalAlign: -2 }} /> Reading file…</div>
+            )}
+            {uploadErr && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 8 }}>{uploadErr}</div>}
+            {uploadTruncatedFrom && (
+              <div className="hint" style={{ marginTop: 8 }}>
+                File has {uploadTruncatedFrom} rows — only the first {UPLOAD_MAX_ROWS} will be imported.
+              </div>
+            )}
+
+            {uploadNeedsMapping && uploadHeaders.length > 0 && (
+              <div className="card" style={{ marginTop: 14, background: "var(--navy-800)" }}>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>Match your columns</div>
+                <div className="hint" style={{ marginBottom: 10 }}>
+                  Couldn't confidently auto-detect Company Name and Email — pick which column is which below.
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {uploadHeaders.map((h, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 13, minWidth: 160, flex: 1 }}>{h || `(column ${i + 1})`}</span>
+                      <select
+                        className="sel"
+                        style={{ maxWidth: 200 }}
+                        value={
+                          uploadMapping.company === i ? "company" :
+                          uploadMapping.email === i ? "email" :
+                          uploadMapping.name === i ? "name" :
+                          uploadMapping.website === i ? "website" : "ignore"
+                        }
+                        onChange={(e) => {
+                          const field = e.target.value;
+                          setUploadMapping((prev) => {
+                            const next = { ...prev };
+                            // clear this column from any field it was previously assigned to
+                            for (const k of Object.keys(next)) if (next[k] === i) next[k] = null;
+                            if (field !== "ignore") next[field] = i;
+                            return next;
+                          });
+                        }}
+                      >
+                        <option value="ignore">Ignore this column</option>
+                        <option value="company">This is Company Name</option>
+                        <option value="email">This is Email</option>
+                        <option value="name">This is Contact Name</option>
+                        <option value="website">This is Website</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="btn sm"
+                  style={{ marginTop: 12 }}
+                  onClick={confirmMapping}
+                  disabled={uploadMapping.company == null || uploadMapping.email == null}
+                >
+                  Continue
+                </button>
+              </div>
+            )}
+
+            {uploadResult && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 14 }}>
+                  <b>{uploadResult.accepted.length} of {uploadResult.accepted.length + uploadResult.skippedCount} rows imported</b>
+                  {uploadResult.skippedCount > 0 && (
+                    <> — {uploadResult.skippedCount} skipped ({Object.entries(uploadResult.skipReasons).map(([reason, n]) => `${n} ${reason}`).join(", ")})</>
+                  )}
+                </div>
+                {uploadResult.accepted.length > 0 && (
+                  <>
+                    <div style={{ overflowX: "auto", marginTop: 10, border: "1px solid var(--navy-700)", borderRadius: 8 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                        <thead>
+                          <tr style={{ background: "var(--navy-800)" }}>
+                            <th style={{ textAlign: "left", padding: "6px 10px" }}>Company</th>
+                            <th style={{ textAlign: "left", padding: "6px 10px" }}>Contact</th>
+                            <th style={{ textAlign: "left", padding: "6px 10px" }}>Email</th>
+                            <th style={{ textAlign: "left", padding: "6px 10px" }}>Website</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {uploadResult.accepted.slice(0, 10).map((p, i) => (
+                            <tr key={i} style={{ borderTop: "1px solid var(--navy-700)" }}>
+                              <td style={{ padding: "6px 10px" }}>{p.company_name}</td>
+                              <td style={{ padding: "6px 10px" }}>{p.contact_name || "—"}</td>
+                              <td style={{ padding: "6px 10px" }}>{p.contact_email}</td>
+                              <td style={{ padding: "6px 10px" }}>{p.website || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {uploadResult.accepted.length > 10 && (
+                      <div className="hint" style={{ marginTop: 6 }}>+ {uploadResult.accepted.length - 10} more not shown</div>
+                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+                      <button className="btn" onClick={importUpload} disabled={importBusy}>
+                        {importBusy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Importing…</> : <><UploadCloud size={16} /> Import {uploadResult.accepted.length} prospects</>}
+                      </button>
+                      {importErr && <span style={{ color: "var(--red)", fontSize: 13 }}>{importErr}</span>}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -3259,7 +3786,7 @@ Return up to 8 candidates, best fits first.`;
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {runs.map((r) => (
               <button key={r.id} className={"navb" + (run?.id === r.id ? " on" : "")} onClick={() => setActiveRunId(r.id)} style={{ fontSize: 12, padding: "7px 10px" }}>
-                {r.service_name} <span style={{ opacity: 0.7 }}>· {new Date(r.created_at).toLocaleDateString()} · {r.prospects.length}</span>
+                {r.service_name || "Uploaded list"} <span style={{ opacity: 0.7 }}>· {new Date(r.created_at).toLocaleDateString()} · {r.prospects.length}</span>
               </button>
             ))}
           </div>
@@ -3271,11 +3798,16 @@ Return up to 8 candidates, best fits first.`;
           <div className="card" style={{ marginBottom: 16, borderColor: "var(--brass)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <div className="eyebrow" style={{ marginBottom: 6 }}>{run.service_name} · {new Date(run.created_at).toLocaleString()}</div>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>{run.service_name || "Uploaded list"} · {new Date(run.created_at).toLocaleString()}</div>
                 <div style={{ fontSize: 14.5, color: "var(--slate)" }}>{run.prospects.length} candidates · {verifiedCount} with a verified contact</div>
                 {run.criteria?.costEstimate && (
                   <div className="hint" style={{ marginTop: 6 }}>
                     Est. cost: ${run.criteria.costEstimate.estimatedUsd.toFixed(3)} · {run.criteria.costEstimate.searchRequests} web searches · {(run.criteria.costEstimate.inputTokens + run.criteria.costEstimate.outputTokens).toLocaleString()} tokens (rough estimate, not exact billing)
+                  </div>
+                )}
+                {run.criteria?.source === "manual_upload" && (
+                  <div className="hint" style={{ marginTop: 6 }}>
+                    <UploadCloud size={12} style={{ verticalAlign: -2 }} /> Uploaded from {run.criteria.filename || "a file"} · zero AI cost
                   </div>
                 )}
               </div>
@@ -3320,8 +3852,19 @@ Return up to 8 candidates, best fits first.`;
                 </span>
               ) : p.is_peer ? (
                 <span className="hint" style={{ color: "var(--slate-dim)" }}>Peer/competitor in this service — not a valid outreach target</span>
+              ) : pickingServiceFor === p.id ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13 }}>Which service are you pitching to this contact?</span>
+                  <select className="sel" style={{ maxWidth: 220 }} value={pickServiceValue} onChange={(e) => setPickServiceValue(e.target.value)}>
+                    {activeSvcs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button className="btn sm" onClick={() => confirmPickedService(p)} disabled={pickServiceBusy}>
+                    {pickServiceBusy ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : "Draft email"}
+                  </button>
+                  <button className="btn ghost sm" onClick={() => setPickingServiceFor(null)} disabled={pickServiceBusy}>Cancel</button>
+                </div>
               ) : p.contact_email && p.verified ? (
-                <button className="btn ghost sm" onClick={() => draftOutreach(p)} disabled={draftingId === p.id}>
+                <button className="btn ghost sm" onClick={() => startDraftOutreach(p)} disabled={draftingId === p.id}>
                   {draftingId === p.id ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Mail size={14} /> Draft outreach email</>}
                 </button>
               ) : (
