@@ -779,6 +779,12 @@ function AppShell({ savedData }) {
   const [vision, setVision] = useState(() => _saved.vision || VISION_SEED);
   const [gpPerUnit, setGpPerUnit] = useState(() => _saved.gpPerUnit || GP_PER_UNIT_SEED);
   const [portfolioMeta, setPortfolioMeta] = useState(() => _saved.portfolioMeta || PORTFOLIO_META_SEED);
+  // Strategic Mode's one-time company profile (Campaign & AI card) — null until the tenant
+  // saves it once via the inline setup form, then reused on every future Strategic generation.
+  const [campaignStrategy, setCampaignStrategy] = useState(() => _saved.campaignStrategy || null);
+  // Strategic Mode's generated posts — kept separate from Quick Post's `calendar` since the
+  // shape differs (hooks/body/cta/rationale, no hashtags/bestTime/frequency).
+  const [strategicPosts, setStrategicPosts] = useState(() => _saved.strategicPosts || []);
 
   // ---- Service lifecycle: add / suspend-reactivate / delete ----
   const addService = useCallback(() => {
@@ -834,10 +840,10 @@ function AppShell({ savedData }) {
   const buildSaveData = useCallback(() => ({
     svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb,
     portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
-    swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta,
+    swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta, campaignStrategy, strategicPosts,
     savedAt: new Date().toISOString(),
   }), [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
-       swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta]);
+       swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta, campaignStrategy, strategicPosts]);
 
   const persistNow = useCallback(async () => {
     try {
@@ -857,7 +863,7 @@ function AppShell({ savedData }) {
     const timer = setTimeout(() => { persistNow(); }, 1200);
     return () => clearTimeout(timer);
   }, [svcs, budget, actuals, misIndirect, cap, optBudget, optObjective, calendar, prospects, crmRows, crmFb, portfolioItems, goals5, goalActuals, roadmap, competitors, ideas, scans,
-      swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta, persistNow]);
+      swot, pillars, focusAvoid, bizModels, ansoff, partners, vision, gpPerUnit, portfolioMeta, campaignStrategy, strategicPosts, persistNow]);
 
   // Keep a short-lived Clerk token in memory so the unload flush below can send it
   // synchronously with the beacon — getToken() is async and there's no time to await
@@ -1009,7 +1015,7 @@ function AppShell({ savedData }) {
           {tab === "funnel" && gated("funnel", <Funnel svcs={svcs} setSvcs={setSvcs} fc={funnelCalc} budget={budget} />)}
           {tab === "opt" && gated("opt", <BudgetOptimizer svcs={svcs} fc={funnelCalc} mktCost={mktCost} optBudget={optBudget} setOptBudget={setOptBudget} optObjective={optObjective} setOptObjective={setOptObjective} />)}
           {tab === "res" && gated("res", <Resources budget={budget} setBudget={setBudget} calc={calc} mktCost={mktCost} fc={funnelCalc} cap={cap} setCap={setCap} />)}
-          {tab === "camp" && gated("camp", <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} companyName={companyName} />)}
+          {tab === "camp" && gated("camp", <Campaign svcs={svcs} calendar={calendar} setCalendar={setCalendar} companyName={companyName} campaignStrategy={campaignStrategy} setCampaignStrategy={setCampaignStrategy} strategicPosts={strategicPosts} setStrategicPosts={setStrategicPosts} />)}
           {tab === "play" && gated("play", <Playbook />)}
           {tab === "prospect" && gated("prospect", <Prospecting svcs={svcs} companyName={companyName} />)}
           {tab === "crm" && gated("crm", <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />)}
@@ -1922,6 +1928,11 @@ const PLATFORMS = ["LinkedIn", "Facebook", "Instagram", "YouTube", "X (Twitter)"
 const OBJECTIVES = ["Awareness", "Interest", "Decision", "Retention"];
 const TONES = ["Authoritative", "Helpful / educational", "Bold", "Warm / relationship"];
 
+const STRATEGY_GOALS = ["Growth", "Authority", "Sales"];
+const STRATEGY_PROFILE_LEVELS = ["Beginner (<1K)", "Medium (1K-20K)", "Established (20K+)"];
+const STRATEGY_MONETIZATION = ["Pre-monetization", "Has an existing offer"];
+const STRATEGY_CONTENT_STYLES = ["Educational", "Story-driven", "Opinion / POV", "Documentary / BTS", "Mixed"];
+
 const PROMO_METHODS = [
   ["Direct sales calls", "Sales manager works a qualified list from directories and inbound leads — phone + email to book meetings."],
   ["Email & catalogue", "Sequenced emails with service one-pagers to subscribers captured via the site pop-up."],
@@ -1930,7 +1941,7 @@ const PROMO_METHODS = [
   ["Referrals & word of mouth", "Structured asks from delivered clients; the cheapest channel with the highest trust."],
 ];
 
-function Campaign({ svcs, calendar, setCalendar, companyName }) {
+function Campaign({ svcs, calendar, setCalendar, companyName, campaignStrategy, setCampaignStrategy, strategicPosts, setStrategicPosts }) {
   const { getToken } = useAuth();
   const [service, setService] = useState(svcs[0]?.name || "");
   const svcObj = svcs.find((x) => x.name === service) || svcs[0];
@@ -1940,6 +1951,98 @@ function Campaign({ svcs, calendar, setCalendar, companyName }) {
   const [tone, setTone] = useState("Authoritative");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  // Strategic Mode — toggle + one-time company profile setup (Step 1). Quick Post's state
+  // and generate() above/below are untouched by any of this.
+  const [mode, setMode] = useState("quick"); // "quick" | "strategic" — session-only, not persisted
+  const [editingStrategy, setEditingStrategy] = useState(false);
+  const blankStrategyDraft = () => ({
+    primaryGoals: [...STRATEGY_GOALS],
+    profileLevel: STRATEGY_PROFILE_LEVELS[0],
+    monetization: STRATEGY_MONETIZATION[0],
+    contentStyle: STRATEGY_CONTENT_STYLES[0],
+  });
+  const [strategyDraft, setStrategyDraft] = useState(() => campaignStrategy || blankStrategyDraft());
+
+  const startEditingStrategy = () => {
+    setStrategyDraft(campaignStrategy || blankStrategyDraft());
+    setEditingStrategy(true);
+  };
+
+  const setGoalAt = (rank, value) => {
+    setStrategyDraft((d) => {
+      const rest = d.primaryGoals.filter((g) => g !== value);
+      const next = [...rest];
+      next.splice(rank, 0, value);
+      return { ...d, primaryGoals: next };
+    });
+  };
+
+  const saveStrategy = () => {
+    setCampaignStrategy(strategyDraft);
+    setEditingStrategy(false);
+  };
+
+  const showStrategySetup = mode === "strategic" && (editingStrategy || !campaignStrategy);
+
+  const [strategicLoading, setStrategicLoading] = useState(false);
+  const [strategicErr, setStrategicErr] = useState("");
+
+  const generateStrategic = async () => {
+    setStrategicLoading(true); setStrategicErr("");
+    const prompt = `You are the voice of ${companyName || "the company"} — always speak as "we," never
+first-person "I," and never reference any company other than ${companyName || "the company"}.
+
+Write ONE social media post for this service, evaluated as a strategic content
+decision, not just a caption.
+
+Service: ${service}
+Platform: ${platform}
+Target audience: ${svcObj?.mkt?.audience || "business decision-makers"}
+Geography: ${svcObj?.mkt?.geo || "the target market"}
+
+Company profile for this platform:
+- Goal priority (highest first): ${campaignStrategy.primaryGoals.join(" > ")}
+- Audience size: ${campaignStrategy.profileLevel}
+- Monetization status: ${campaignStrategy.monetization}
+- Content style: ${campaignStrategy.contentStyle}
+
+Always optimize for, in this order of importance: saves, shares, and follows
+over raw view count; reach beyond ${companyName || "the company"}'s existing
+followers; consistent positioning with prior content; real authority — original
+insight or verifiable proof, never generic claims or empty confidence; retention
+(giving a reason to keep watching/reading to the end); and conversion toward the
+stated goal priority. Write in a format native to ${platform} today, not a
+generic cross-platform post.
+
+Respond with ONLY valid JSON, no markdown, no code fences, using exactly these keys:
+{"hooks":["3 distinct opening-line options for this post, each a different angle"],"body":"the full post body, ready to publish, written for one specific hook that best fits — but keep it hook-agnostic enough to pair with any of the 3","cta":"one specific call to action line","rationale":"2-3 sentences on why this structure and these choices serve the stated goal priority and profile"}`;
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }], feature: "campaign_drafts" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't generate this post"));
+      const text = data.content.map((i) => (i.type === "text" ? i.text : "")).join("").replace(/```json|```/g, "").trim();
+      const parsed = extractJson(text);
+      const entry = { id: Date.now(), service, platform, ...parsed };
+      setStrategicPosts((c) => [entry, ...c]);
+
+      const usageRes = await fetch("/api/usage/campaign-draft", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      if (!usageRes.ok) {
+        const usageJson = await usageRes.json().catch(() => ({}));
+        setStrategicPosts((c) => c.filter((x) => x.id !== entry.id));
+        throw new Error(usageJson.message || usageJson.error || "Couldn't save this draft");
+      }
+    } catch (e) {
+      setStrategicErr(e.message || "Couldn't generate this post. Try again in a moment.");
+    } finally {
+      setStrategicLoading(false);
+    }
+  };
 
   const pickService = (name) => {
     setService(name);
@@ -1999,22 +2102,100 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
         <div className="sub">Pick a service, channel and funnel stage — Claude drafts the post, the best time to publish, and the cadence. Add the ones you like to the calendar.</div>
       </div>
 
-      <div className="card">
-        <div className="grid g4">
-          <Sel label="Service" val={service} set={pickService} opts={svcs.map((s) => s.name)} />
-          <Sel label="Platform" val={platform} set={setPlatform} opts={PLATFORMS} />
-          <Sel label="Objective" val={objective} set={setObjective} opts={OBJECTIVES} />
-          <Sel label="Tone" val={tone} set={setTone} opts={TONES} />
-        </div>
-        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <button className="btn" onClick={generate} disabled={loading}>
-            {loading ? <><Loader2 size={16} className="spin" style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Sparkles size={16} /> Generate post</>}
-          </button>
-          <span className="hint">Targeting <b style={{ color: "var(--ink)" }}>{svcObj?.mkt?.audience}</b> · {svcObj?.mkt?.geo}</span>
-          {err && <span style={{ color: "var(--red)", fontSize: 13 }}>{err}</span>}
-        </div>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button className={mode === "quick" ? "btn sm" : "btn ghost sm"} onClick={() => setMode("quick")}>Quick Post</button>
+        <button className={mode === "strategic" ? "btn sm" : "btn ghost sm"} onClick={() => setMode("strategic")}>Strategic Mode</button>
       </div>
+
+      {mode === "quick" && (
+        <div className="card">
+          <div className="grid g4">
+            <Sel label="Service" val={service} set={pickService} opts={svcs.map((s) => s.name)} />
+            <Sel label="Platform" val={platform} set={setPlatform} opts={PLATFORMS} />
+            <Sel label="Objective" val={objective} set={setObjective} opts={OBJECTIVES} />
+            <Sel label="Tone" val={tone} set={setTone} opts={TONES} />
+          </div>
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <button className="btn" onClick={generate} disabled={loading}>
+              {loading ? <><Loader2 size={16} className="spin" style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Sparkles size={16} /> Generate post</>}
+            </button>
+            <span className="hint">Targeting <b style={{ color: "var(--ink)" }}>{svcObj?.mkt?.audience}</b> · {svcObj?.mkt?.geo}</span>
+            {err && <span style={{ color: "var(--red)", fontSize: 13 }}>{err}</span>}
+          </div>
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        </div>
+      )}
+
+      {mode === "strategic" && showStrategySetup && (
+        <div className="card">
+          <div className="disp" style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Set up your content strategy profile</div>
+          <div className="sub" style={{ fontSize: 13.5, marginBottom: 16 }}>This is asked once and reused for every Strategic Mode post. You can edit it later.</div>
+          <div className="grid g4">
+            <Sel label="1st priority" val={strategyDraft.primaryGoals[0]} set={(v) => setGoalAt(0, v)} opts={STRATEGY_GOALS} />
+            <Sel label="2nd priority" val={strategyDraft.primaryGoals[1]} set={(v) => setGoalAt(1, v)} opts={STRATEGY_GOALS} />
+            <Sel label="3rd priority" val={strategyDraft.primaryGoals[2]} set={(v) => setGoalAt(2, v)} opts={STRATEGY_GOALS} />
+            <Sel label="Profile level" val={strategyDraft.profileLevel} set={(v) => setStrategyDraft((d) => ({ ...d, profileLevel: v }))} opts={STRATEGY_PROFILE_LEVELS} />
+            <Sel label="Monetization" val={strategyDraft.monetization} set={(v) => setStrategyDraft((d) => ({ ...d, monetization: v }))} opts={STRATEGY_MONETIZATION} />
+            <Sel label="Content style" val={strategyDraft.contentStyle} set={(v) => setStrategyDraft((d) => ({ ...d, contentStyle: v }))} opts={STRATEGY_CONTENT_STYLES} />
+          </div>
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
+            <button className="btn" onClick={saveStrategy}>{campaignStrategy ? "Save changes" : "Save & Continue"}</button>
+            {campaignStrategy && <button className="btn ghost sm" onClick={() => setEditingStrategy(false)}>Cancel</button>}
+          </div>
+        </div>
+      )}
+
+      {mode === "strategic" && !showStrategySetup && (
+        <>
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
+              <span className="hint">Strategy profile saved — priority: <b style={{ color: "var(--ink)" }}>{campaignStrategy.primaryGoals.join(" → ")}</b> · {campaignStrategy.profileLevel} · {campaignStrategy.monetization} · {campaignStrategy.contentStyle}</span>
+              <button className="btn ghost sm" onClick={startEditingStrategy}>Edit strategy profile</button>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="grid g4">
+              <Sel label="Service" val={service} set={pickService} opts={svcs.map((s) => s.name)} />
+              <Sel label="Platform" val={platform} set={setPlatform} opts={PLATFORMS} />
+            </div>
+            <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <button className="btn" onClick={generateStrategic} disabled={strategicLoading}>
+                {strategicLoading ? <><Loader2 size={16} className="spin" style={{ animation: "spin 1s linear infinite" }} /> Drafting…</> : <><Sparkles size={16} /> Generate strategic post</>}
+              </button>
+              <span className="hint">Targeting <b style={{ color: "var(--ink)" }}>{svcObj?.mkt?.audience}</b> · {svcObj?.mkt?.geo}</span>
+              {strategicErr && <span style={{ color: "var(--red)", fontSize: 13 }}>{strategicErr}</span>}
+            </div>
+          </div>
+
+          {strategicPosts.length > 0 && (
+            <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
+              {strategicPosts.map((p) => (
+                <div key={p.id} className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>{p.platform}</span>
+                      <span className="pill" style={{ background: "var(--navy-700)", color: "var(--slate)" }}>{p.service}</span>
+                    </div>
+                    <button className="iconbtn" onClick={() => setStrategicPosts((c) => c.filter((x) => x.id !== p.id))}><Trash2 size={16} /></button>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <div className="eyebrow">Hook options</div>
+                    <ol style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                      {p.hooks?.map((h, i) => <li key={i} style={{ marginBottom: 4 }}>{h}</li>)}
+                    </ol>
+                  </div>
+                  <div className="postbox" style={{ marginTop: 12 }}>{p.body}</div>
+                  <div className="metarow">
+                    <span className="meta"><Megaphone size={14} color="var(--brass)" /> CTA: <b>{p.cta}</b></span>
+                  </div>
+                  {p.rationale && <div className="hint" style={{ marginTop: 10 }}>{p.rationale}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       {calendar.length > 0 && (
         <>

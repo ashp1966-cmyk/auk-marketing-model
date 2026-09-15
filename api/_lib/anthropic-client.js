@@ -24,6 +24,8 @@ const DRY_RUN_TEXT = JSON.stringify({
   bestTime: '',
   frequency: '',
   rationale: '[DRY RUN] no real call made',
+  hooks: ['[DRY RUN] hook 1', '[DRY RUN] hook 2', '[DRY RUN] hook 3'],
+  cta: '[DRY RUN] cta',
 });
 
 export async function callClaude(messages, opts = {}) {
