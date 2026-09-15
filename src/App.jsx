@@ -21,6 +21,7 @@ const LOGO_SRC = "data:image/png;base64," + LOGO_B64;
 /* ---------------------------------------------------------------- theme */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&family=Barlow+Condensed:wght@400;600&display=swap');
 :root{
   --navy-900:#EAF3F8; --navy-850:#DCEBF3; --navy-800:#FFFFFF; --navy-700:#C6DDEC;
   --navy-600:#B8D4E3; --line:#A9CFE0;
@@ -35,14 +36,12 @@ const CSS = `
 .eyebrow{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.18em;font-size:12px;color:var(--brass);font-weight:600;}
 .aukm ::-webkit-scrollbar{height:8px;width:8px}.aukm ::-webkit-scrollbar-thumb{background:var(--navy-600);border-radius:4px}
 
-/* header / plimsoll rule */
+/* header */
 .topbar{display:flex;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--navy-850),var(--navy-900));position:sticky;top:0;z-index:20;flex-wrap:wrap;}
 .mark{height:38px;width:auto;display:flex;align-items:center;justify-content:center;flex:none;}
 .mark img{height:100%;width:auto;object-fit:contain;display:block;}
 .brandT{font-size:24px;font-weight:700;line-height:1;text-transform:uppercase;letter-spacing:.06em;color:var(--brass);}
 .brandS{font-size:11.5px;color:var(--slate);letter-spacing:.14em;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;}
-.plimsoll{height:1px;background:var(--line);position:relative;margin:0;}
-.plimsoll::before{content:"";position:absolute;left:50%;top:-4px;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--brass);background:var(--navy-900);transform:translateX(-50%);}
 
 /* nav */
 .nav{display:flex;gap:2px;padding:8px 16px;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--navy-850);}
@@ -122,6 +121,66 @@ const CSS = `
 .meta b{color:var(--ink);font-weight:600;}
 .hashes{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px;}
 .hashes span{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);}
+
+/* ---------------------------------------------------------------- blueprint restyle (header/sidebar/Dashboard only) */
+/* Scoped under .bp-shell so it never touches .card/.btn/.kpi/.field/.tbl etc. used by every other tab. */
+.bp-shell{
+  --bp-bg:#f2f2f3; --bp-divider:rgba(29,31,32,.16); --bp-text:#1d1f20;
+  --bp-accent:#5980a6; --bp-accent-100:#eef6ff; --bp-accent-600:#597ea3; --bp-accent-800:#2c455d;
+  --bp-neutral-200:#e7e7ea;
+  --bp-font-head:'Barlow Condensed',system-ui,sans-serif; --bp-font-body:'Barlow',system-ui,sans-serif;
+}
+.bp-shell h1,.bp-shell h2,.bp-shell h3,.bp-shell h6{font-family:var(--bp-font-head);font-weight:600;letter-spacing:-.015em;margin:0 0 6px;}
+
+.bp-header{display:flex;align-items:center;gap:14px;padding:14px 24px;background:var(--bp-bg);border-bottom:1px solid var(--bp-divider);position:sticky;top:0;z-index:20;flex-wrap:wrap;font-family:var(--bp-font-body);color:var(--bp-text);}
+.bp-mark{width:34px;height:34px;border:1px solid var(--bp-divider);display:flex;align-items:center;justify-content:center;flex:none;background:var(--bp-bg);}
+.bp-mark img{height:22px;width:auto;object-fit:contain;display:block;}
+.bp-brand{margin-right:auto;}
+.bp-brandT{font-family:var(--bp-font-head);font-weight:600;font-size:19px;letter-spacing:-.01em;color:var(--bp-accent-800);}
+.bp-brandS{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--bp-text);opacity:.5;}
+.bp-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.02em;padding:3px 10px;border:1px solid var(--bp-accent);color:var(--bp-accent);white-space:nowrap;font-family:var(--bp-font-head);font-weight:600;}
+.bp-btn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--bp-font-head);font-weight:600;font-size:14px;color:var(--bp-text);background:transparent;border:1px solid var(--bp-divider);padding:8px 14px;border-radius:0;transition:.15s;}
+.bp-btn:hover{background:rgba(29,31,32,.05);}
+.bp-btn:disabled{opacity:.5;cursor:not-allowed;}
+.bp-btn-icon{width:36px;height:36px;padding:0;justify-content:center;}
+.bp-btn-primary{background:var(--bp-accent);color:var(--bp-bg);border-color:var(--bp-accent);}
+.bp-btn-primary:hover{background:var(--bp-accent-600);}
+
+.bp-body{display:flex;align-items:flex-start;background:var(--bp-bg);}
+.bp-sidebar{width:220px;flex:none;border-right:1px solid var(--bp-divider);padding:16px 0;position:sticky;top:66px;align-self:flex-start;background:var(--bp-bg);font-family:var(--bp-font-body);}
+.bp-tabbtn{display:flex;align-items:center;gap:8px;font-family:var(--bp-font-head);font-weight:600;font-size:13px;letter-spacing:.02em;text-align:left;background:transparent;border:none;border-left:2px solid transparent;padding:10px 14px;cursor:pointer;color:rgba(29,31,32,.55);white-space:nowrap;width:100%;text-transform:uppercase;}
+.bp-tabbtn:hover{color:var(--bp-text);background:rgba(29,31,32,.05);}
+.bp-tabbtn.on{color:var(--bp-accent-800);border-left-color:var(--bp-accent);background:var(--bp-accent-100);}
+
+/* Dashboard content only — .wrap keeps the existing theme explicitly (see reset below) so it
+   never inherits .bp-shell's fonts/colors; Dashboard opts back in with .bp-dash + these classes. */
+.wrap{flex:1;min-width:0;font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--navy-900);}
+.bp-dash{font-family:var(--bp-font-body);color:var(--bp-text);}
+.bp-sechead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:28px;flex-wrap:wrap;}
+.bp-eyebrow{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--bp-accent);margin-bottom:6px;font-family:var(--bp-font-head);font-weight:600;}
+.bp-sub{max-width:340px;font-size:13px;opacity:.65;margin:0;text-align:right;}
+.bp-card{display:flex;flex-direction:column;gap:8px;padding:16px;background:transparent;border:1px solid var(--bp-divider);border-radius:0;}
+.bp-card-kicker{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--bp-accent);font-family:var(--bp-font-head);font-weight:600;}
+.bp-kpi-val{font-family:var(--bp-font-head);font-weight:600;font-size:32px;letter-spacing:-.01em;}
+.bp-kpi-foot{font-size:12px;opacity:.6;}
+.bp-gauge{height:4px;background:var(--bp-neutral-200);margin-top:8px;overflow:hidden;}
+.bp-gauge>i{display:block;height:100%;background:var(--bp-accent-600);}
+.bp-divh{display:flex;align-items:center;gap:14px;margin:26px 0 14px;}
+.bp-divh:first-of-type{margin-top:0;}
+.bp-divh h6{margin:0;color:var(--bp-accent-800);font-size:13px;letter-spacing:.08em;text-transform:uppercase;}
+.bp-divh .ln{flex:1;height:1px;background:var(--bp-divider);}
+.bp-hint{font-size:12px;opacity:.6;}
+
+.blueprint{position:relative;}
+.blueprint>.corner{position:absolute;width:11px;height:11px;color:rgba(29,31,32,.55);}
+.blueprint>.corner::before,.blueprint>.corner::after{content:"";position:absolute;background:currentColor;}
+.blueprint>.corner::before{left:5px;top:0;width:1px;height:100%;}
+.blueprint>.corner::after{top:5px;left:0;width:100%;height:1px;}
+.blueprint>.corner.tl{top:-6px;left:-6px;}
+.blueprint>.corner.tr{top:-6px;right:-6px;}
+.blueprint>.corner.bl{bottom:-6px;left:-6px;}
+.blueprint>.corner.br{bottom:-6px;right:-6px;}
+@media(max-width:860px){.bp-sidebar{position:static;width:auto;border-right:0;border-bottom:1px solid var(--bp-divider);}.bp-body{flex-direction:column;}}
 `;
 
 /* ---------------------------------------------------------------- helpers */
@@ -135,7 +194,7 @@ const Rk = (n) => {
 };
 const pct = (n) => (n * 100).toFixed(1) + "%";
 const marginColor = (m) => (m >= 0.4 ? "var(--green)" : m >= 0.25 ? "var(--amber)" : "var(--red)");
-const BARCLR = ["#3D9BC4", "#2BAABF", "#5B9BC9", "#6f9bd1", "#16A34A", "#b98acb"];
+const BARCLR = ["#b5d9fd", "#749dc4", "#9ebbd8", "#627d98", "#2c455d", "#98989b"];
 
 // Extracts a human-readable message from a failed /api/generate response. Two different
 // shapes can land here: our own trial-gate/validation errors (flat `message` or `error`
@@ -972,42 +1031,41 @@ function AppShell({ savedData }) {
   const gated = (id, node) => (GATED_TABS.has(id) && trialLocked ? <TrialLockedBanner trialStatus={trialStatus} onGoToBilling={() => setTab("billing")} /> : node);
 
   return (
-    <div className="aukm">
+    <div className="aukm bp-shell">
       <style>{CSS}</style>
 
-      <div className="topbar">
-        <div className="mark"><img src={LOGO_SRC} alt="AUK Marine & Mining" /></div>
-        <div style={{ flex: 1 }}>
-          <div className="brandT">AUK Marine <span style={{ color: "var(--brass)" }}>&amp; Mining</span></div>
-          <div className="brandS">Linked Marketing Model · auk-maritime.com</div>
+      <header className="bp-header">
+        <div className="bp-mark"><img src={LOGO_SRC} alt="AUK Marine & Mining" /></div>
+        <div className="bp-brand">
+          <div className="bp-brandT">AUK Marine &amp; Mining</div>
+          <div className="bp-brandS">Linked Marketing Model · auk-maritime.com</div>
         </div>
-        <div className="pill" style={{ background: "var(--navy-700)", color: "var(--slate)" }}>
-          <Compass size={14} /> v1 · ZAR · 3-year plan
-        </div>
-        <button className="btn sm" onClick={saveNow}
-          style={{ background: saveMsg ? "var(--green)" : "var(--brass)", color: "var(--navy-900)", minWidth: 90 }}>
+        <span className="bp-tag"><Compass size={13} /> v1 · ZAR · 3-year plan</span>
+        <button className="bp-btn" onClick={saveNow}
+          style={saveMsg ? { background: "var(--green)", color: "#fff", borderColor: "var(--green)" } : undefined}>
           <Save size={14} /> {saveMsg || "Save"}
         </button>
-        <button className="btn ghost sm" onClick={downloadBackup} title="Download backup JSON">
+        <button className="bp-btn bp-btn-icon" onClick={downloadBackup} title="Download backup JSON">
           <Download size={14} />
         </button>
-        <button className="btn ghost sm" onClick={async () => { await persistNow(); signOut(); }} title="Sign out">
+        <button className="bp-btn bp-btn-primary blueprint" onClick={async () => { await persistNow(); signOut(); }} title="Sign out">
+          <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
           <LogOut size={15} /> Sign out
         </button>
-      </div>
-      <div className="plimsoll" />
+      </header>
 
-      <div className="nav">
-        {NAV.map(([id, label, Icon]) => (
-          <button key={id} className={"navb" + (tab === id ? " on" : "")} onClick={() => setTab(id)}
-            style={GATED_TABS.has(id) && trialLocked ? { opacity: 0.45 } : undefined}>
-            <Icon size={16} /> {label}
-          </button>
-        ))}
-      </div>
+      <div className="bp-body">
+        <nav className="bp-sidebar">
+          {NAV.map(([id, label, Icon]) => (
+            <button key={id} className={"bp-tabbtn" + (tab === id ? " on" : "")} onClick={() => setTab(id)}
+              style={GATED_TABS.has(id) && trialLocked ? { opacity: 0.45 } : undefined}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </nav>
 
-      <div className="wrap">
-        <ErrorBoundary key={tab}>
+        <div className="wrap">
+          <ErrorBoundary key={tab}>
           {tab === "dash" && <Dashboard calc={calc} mktCost={mktCost} />}
           {tab === "inputs" && <Inputs svcs={svcs} setSvcs={setSvcs} onAddService={addService} onToggleActive={toggleServiceActive} onDeleteService={deleteService} />}
           {tab === "portfolio" && <Portfolio svcs={svcs} setSvcs={setSvcs} portfolioItems={portfolioItems} setPortfolioItems={setPortfolioItems} portfolioMeta={portfolioMeta} />}
@@ -1023,7 +1081,8 @@ function AppShell({ savedData }) {
           {tab === "plan" && gated("plan", <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />)}
           {tab === "billing" && <Billing companyName={companyName} />}
           {tab === "admin" && <AdminUsage />}
-        </ErrorBoundary>
+          </ErrorBoundary>
+        </div>
       </div>
     </div>
   );
@@ -1066,59 +1125,74 @@ function Dashboard({ calc, mktCost }) {
   const marginData = activeRows.map((r) => ({ name: r.name, margin: +(r.yrs[2].margin * 100).toFixed(1) }));
 
   return (
-    <>
-      <div className="sechead">
+    <div className="bp-dash">
+      <div className="bp-sechead">
         <div>
-          <div className="eyebrow">Command view</div>
+          <div className="bp-eyebrow">Command view</div>
           <h2>Where the plan is headed</h2>
         </div>
-        <div className="sub">Top-line targets across the three-year horizon. Every figure flows from the Inputs tab.</div>
+        <p className="bp-sub">Top-line targets across the three-year horizon. Every figure flows from the Inputs tab.</p>
       </div>
 
       <div className="grid g4">
-        <Kpi label="Turnover · Year 3" val={Rk(y3.turnover)} foot={`${Rk(calc.totals[0].turnover)} in Year 1`} fill={0.85} />
-        <Kpi label="Gross profit · Year 3" val={Rk(y3.gp)} foot="After delivery cost" fill={0.7} />
-        <Kpi label="Blended margin · Year 3" val={pct(y3.margin)} foot="Weighted across services" fill={y3.margin} accent={marginColor(y3.margin)} />
-        <Kpi label="Marketing ROI · Year 3" val={roi.toFixed(1) + "x"} foot={`On ${Rk(mktCost)} spend`} fill={Math.min(roi / 10, 1)} />
+        <BpKpi label="Turnover · Year 3" val={Rk(y3.turnover)} foot={`${Rk(calc.totals[0].turnover)} in Year 1`} fill={0.85} />
+        <BpKpi label="Gross profit · Year 3" val={Rk(y3.gp)} foot="After delivery cost" fill={0.7} />
+        <BpKpi label="Blended margin · Year 3" val={pct(y3.margin)} foot="Weighted across services" fill={y3.margin} accent={marginColor(y3.margin)} />
+        <BpKpi label="Marketing ROI · Year 3" val={roi.toFixed(1) + "x"} foot={`On ${Rk(mktCost)} spend`} fill={Math.min(roi / 10, 1)} />
       </div>
 
-      <div className="divh"><h3>Turnover by service</h3><div className="ln" /></div>
-      <div className="card">
+      <div className="bp-divh"><h6>Turnover by service</h6><div className="ln" /></div>
+      <div className="bp-card blueprint">
+        <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
         <ResponsiveContainer width="100%" height={330}>
           <BarChart data={revData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#A9CFE0" vertical={false} />
-            <XAxis dataKey="year" stroke="#4D7290" fontSize={13} />
-            <YAxis stroke="#4D7290" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
-            <Tooltip contentStyle={ttStyle} formatter={(v) => R(v)} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--bp-divider)" vertical={false} />
+            <XAxis dataKey="year" stroke="var(--bp-text)" fontSize={13} />
+            <YAxis stroke="var(--bp-text)" fontSize={12} tickFormatter={(v) => "R" + (v / 1e6).toFixed(1) + "m"} />
+            <Tooltip contentStyle={bpTtStyle} formatter={(v) => R(v)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {activeRows.map((r, i) => (
-              <Bar key={r.id} dataKey={r.name} stackId="a" fill={BARCLR[i % BARCLR.length]} radius={i === activeRows.length - 1 ? [4, 4, 0, 0] : 0} />
+              <Bar key={r.id} dataKey={r.name} stackId="a" fill={BARCLR[i % BARCLR.length]} radius={0} />
             ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="divh"><h3>Gross margin by service · Year 3</h3><div className="ln" /></div>
-      <div className="card">
+      <div className="bp-divh"><h6>Gross margin by service · Year 3</h6><div className="ln" /></div>
+      <div className="bp-card blueprint">
+        <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={marginData} layout="vertical" margin={{ left: 8, right: 24 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#A9CFE0" horizontal={false} />
-            <XAxis type="number" stroke="#4D7290" fontSize={12} domain={[0, 100]} tickFormatter={(v) => v + "%"} />
-            <YAxis type="category" dataKey="name" stroke="#4D7290" fontSize={12} width={150} />
-            <Tooltip contentStyle={ttStyle} formatter={(v) => v + "%"} />
-            <Bar dataKey="margin" radius={[0, 4, 4, 0]}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--bp-divider)" horizontal={false} />
+            <XAxis type="number" stroke="var(--bp-text)" fontSize={12} domain={[0, 100]} tickFormatter={(v) => v + "%"} />
+            <YAxis type="category" dataKey="name" stroke="var(--bp-text)" fontSize={12} width={150} />
+            <Tooltip contentStyle={bpTtStyle} formatter={(v) => v + "%"} />
+            <Bar dataKey="margin" radius={0}>
               {marginData.map((d, i) => <Cell key={i} fill={marginColor(d.margin / 100)} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-        <div className="hint" style={{ marginTop: 10 }}>
+        <div className="bp-hint" style={{ marginTop: 10 }}>
           Bars turn <b style={{ color: "var(--green)" }}>green</b> above 40%, <b style={{ color: "var(--amber)" }}>amber</b> 25–40%, <b style={{ color: "var(--red)" }}>red</b> below 25% — a fast read on where margins are healthy.
         </div>
       </div>
-    </>
+    </div>
   );
 }
 const ttStyle = { background: "#FFFFFF", border: "1px solid #A9CFE0", borderRadius: 8, color: "#0A1628", fontSize: 13 };
+const bpTtStyle = { background: "#FFFFFF", border: "1px solid rgba(29,31,32,.16)", borderRadius: 0, color: "#1d1f20", fontSize: 13, fontFamily: "'Barlow', system-ui, sans-serif" };
+
+function BpKpi({ label, val, foot, fill = 0.5, accent }) {
+  return (
+    <div className="bp-card blueprint">
+      <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
+      <div className="bp-card-kicker">{label}</div>
+      <div className="bp-kpi-val" style={{ color: accent || "var(--bp-text)" }}>{val}</div>
+      <div className="bp-kpi-foot">{foot}</div>
+      <div className="bp-gauge"><i style={{ width: Math.max(4, Math.min(1, fill) * 100) + "%", background: accent || undefined }} /></div>
+    </div>
+  );
+}
 
 function Select({ label, val, set, opts }) {
   return (
