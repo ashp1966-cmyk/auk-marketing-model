@@ -2326,9 +2326,9 @@ function Billing({ companyName }) {
   const [error, setError] = useState("");
 
   const PLANS = [
-    { id: "starter", name: "Starter", price: 950, planCode: "PLN_ilx78vdf42i231q", blurb: "For a single service line getting off the ground." },
-    { id: "growth", name: "Growth", price: 2400, planCode: "PLN_capulck131auoc8", blurb: "Multiple services, active funnel and campaign planning." },
-    { id: "agency", name: "Agency", price: 6500, planCode: "PLN_f5h3b4jk0zoppcf", blurb: "Full portfolio, prospecting pipeline, CRM sync." },
+    { id: "starter", name: "Starter", price: 950, planCode: "PLN_ek4cmy74mxanywt", blurb: "For a single service line getting off the ground." },
+    { id: "growth", name: "Growth", price: 2400, planCode: "PLN_qlsyv2l059kp4ra", blurb: "Multiple services, active funnel and campaign planning." },
+    { id: "agency", name: "Agency", price: 6500, planCode: "PLN_sgi2vn2qnmhnysg", blurb: "Full portfolio, prospecting pipeline, CRM sync." },
   ];
 
   const load = useCallback(async () => {
