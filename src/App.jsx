@@ -2326,6 +2326,7 @@ function Billing({ companyName }) {
   const [error, setError] = useState("");
 
   const PLANS = [
+    { id: "startup", name: "Startup", price: 450, planCode: "PLN_nxjgctcp3gxlct6", blurb: "For early-stage businesses testing the platform." },
     { id: "starter", name: "Starter", price: 950, planCode: "PLN_ek4cmy74mxanywt", blurb: "For a single service line getting off the ground." },
     { id: "growth", name: "Growth", price: 2400, planCode: "PLN_qlsyv2l059kp4ra", blurb: "Multiple services, active funnel and campaign planning." },
     { id: "agency", name: "Agency", price: 6500, planCode: "PLN_sgi2vn2qnmhnysg", blurb: "Full portfolio, prospecting pipeline, CRM sync." },
