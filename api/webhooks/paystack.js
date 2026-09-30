@@ -132,6 +132,13 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Webhook verification misconfigured' });
   }
   if (!signatureValid) {
+    // TEMPORARY DIAGNOSTIC — remove after the live-webhook 401 is understood.
+    // Logs only non-secret shape info: never the key, never the signature value.
+    const k = process.env.PAYSTACK_SECRET_KEY || '';
+    const keyKind = /^sk_(live|test)_/.test(k) ? k.slice(0, 8) : 'nonstandard';
+    console.error(
+      `[paystack-webhook-401] keyKind=${keyKind} sigHeaderLen=${String(req.headers['x-paystack-signature'] || '').length} bodyLen=${rawBody.length}`
+    );
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
