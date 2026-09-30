@@ -137,7 +137,7 @@ export default async function handler(req, res) {
     const k = process.env.PAYSTACK_SECRET_KEY || '';
     const keyKind = /^sk_(live|test)_/.test(k) ? k.slice(0, 8) : 'nonstandard';
     console.error(
-      `[paystack-webhook-401] keyKind=${keyKind} sigHeaderLen=${String(req.headers['x-paystack-signature'] || '').length} bodyLen=${rawBody.length}`
+      `[paystack-webhook-401] keyKind=${keyKind} keyLen=${k.length} keyTrimmedLen=${k.trim().length} sigHeaderLen=${String(req.headers['x-paystack-signature'] || '').length} bodyLen=${rawBody.length}`
     );
     return res.status(401).json({ error: 'Invalid signature' });
   }
