@@ -1,0 +1,17 @@
+-- Paystack subscription email_token column
+-- (CLAUDE-CODE-BRIEF-subscription-cancellation.md, Step 1).
+-- NOT YET RUN ANYWHERE. Review before executing.
+--
+-- Run order: rls-test Neon branch first, only then production, after explicit approval.
+-- Run the migration BEFORE deploying the code that writes this column (the column is
+-- nullable, so the migration is safe on its own; the reverse order would make the webhook's
+-- subscription.create branch fail against a missing column).
+--
+-- email_token is half of what Paystack's POST /subscription/disable requires (the other half
+-- is the subscription_code already in paystack_subscription_code). Treat it as a credential:
+-- never return it from any endpoint, never log it.
+--
+-- No new grants/policies needed on `tenants`: same reasoning as add-billing-columns.sql --
+-- it already has row-level security scoped by `id` and `tenant_app` already holds
+-- select/insert/update/delete on the whole table, so this new column is automatically covered.
+alter table tenants add column if not exists paystack_email_token text;

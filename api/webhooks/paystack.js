@@ -111,6 +111,39 @@ async function handleChargeSuccess(data) {
   return { ok: true, tenantId };
 }
 
+// subscription.create carries the codes Paystack's POST /subscription/disable needs
+// (CLAUDE-CODE-BRIEF-subscription-cancellation.md, Step 1). It has no metadata.tenant_id (that
+// lives on the transaction), so the tenant is matched via customer.customer_code, which
+// handleChargeSuccess stores. Only these two columns are written here -- billing_status,
+// paid_until and plan_code stay owned by charge.success. Both codes overwrite rather than
+// coalesce: a resubscribe must replace a cancelled subscription's codes. Never log values.
+async function handleSubscriptionCreate(data) {
+  const subscriptionCode = data?.subscription_code;
+  const emailToken = data?.email_token;
+  const customerCode = data?.customer?.customer_code;
+  if (
+    typeof subscriptionCode !== 'string' || !subscriptionCode ||
+    typeof emailToken !== 'string' || !emailToken ||
+    typeof customerCode !== 'string' || !customerCode
+  ) {
+    // Malformed/unexpected shape: 200 (via the caller) so Paystack doesn't retry it forever.
+    // The payload stays in webhook_events for inspection.
+    console.error('[paystack-webhook] subscription.create missing expected fields; skipped');
+    return { ok: true, skipped: true };
+  }
+
+  const tenantId = await findTenantId(data);
+  if (!tenantId) return { ok: false, unmatched: true };
+
+  await sql`
+    update tenants
+    set paystack_subscription_code = ${subscriptionCode},
+        paystack_email_token = ${emailToken}
+    where id = ${tenantId}
+  `;
+  return { ok: true, tenantId };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -161,6 +194,18 @@ export default async function handler(req, res) {
 
     if (event === 'charge.success') {
       await handleChargeSuccess(data);
+    } else if (event === 'subscription.create') {
+      const result = await handleSubscriptionCreate(data);
+      if (result.unmatched) {
+        // charge.success hasn't stored this customer_code yet. The dedupe row was inserted
+        // above, so without releasing it Paystack's retry would be deduped and the event
+        // lost permanently. Release it and 500 so the retry reprocesses once the customer
+        // code exists. Deliberately scoped to this branch only -- the broader "any processing
+        // failure leaves the dedupe row" gap is a separate tracked item, not fixed here.
+        await sql`delete from webhook_events where event_id = ${eventId}`;
+        console.error('[paystack-webhook] subscription.create had no matching tenant yet; released for retry');
+        return res.status(500).json({ error: 'No matching tenant yet; will retry' });
+      }
     } else if (event === 'subscription.disable' || event === 'invoice.payment_failed') {
       // TODO: fill in once real payload shape is captured and reviewed (see file header).
       // Payload is already stored in webhook_events for inspection.
