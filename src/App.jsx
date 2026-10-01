@@ -3094,6 +3094,57 @@ const PLAYBOOK = [
 const AIDA_OF_STEP = ["Foundation", "Awareness", "Awareness", "Awareness", "Interest", "Interest", "Decision", "Decision", "Retention"];
 const STAGE_CLR = { Foundation: "var(--slate)", Awareness: "var(--slate)", Interest: "var(--teal)", Decision: "var(--brass)", Retention: "var(--green)" };
 
+const DOC_CATEGORY = "updated_marketing_info";
+const DOC_CATEGORY_LABEL = "Updated marketing information";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOC_MAX_BYTES = 10 * 1024 * 1024; // browser-side guard so a huge file can't freeze the tab
+
+// Extraction runs entirely in the browser — the file itself never reaches our servers,
+// only the extracted text does. The PDF worker is bundled locally (Vite ?url import),
+// not loaded from a CDN.
+async function extractDocText(file) {
+  const name = file.name.toLowerCase();
+  const buf = await file.arrayBuffer();
+  if (name.endsWith(".docx")) {
+    const mammoth = (await import("mammoth")).default;
+    const { value } = await mammoth.extractRawText({ arrayBuffer: buf });
+    return { mimeType: DOCX_MIME, text: value };
+  }
+  if (name.endsWith(".pdf")) {
+    const [{ PDFParse }, { default: workerUrl }] = await Promise.all([
+      import("pdf-parse"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+    ]);
+    PDFParse.setWorker(workerUrl);
+    const parser = new PDFParse({ data: new Uint8Array(buf) });
+    try {
+      const result = await parser.getText();
+      return { mimeType: "application/pdf", text: result.text };
+    } finally {
+      await parser.destroy();
+    }
+  }
+  throw new Error("Only Word (.docx) and PDF files are supported.");
+}
+
+// Plain-text rendering only: matches become React <mark> nodes, never raw HTML.
+function highlightTerms(text, words) {
+  if (!words.length) return text;
+  const re = new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
+  return text.split(re).map((part, i) =>
+    i % 2 === 1 ? <mark key={i} style={{ background: "rgba(191,149,63,.35)", color: "inherit" }}>{part}</mark> : part
+  );
+}
+
+function docSnippet(content, words) {
+  const lower = content.toLowerCase();
+  const hits = words.map((w) => lower.indexOf(w)).filter((i) => i >= 0);
+  const at = hits.length ? Math.min(...hits) : 0;
+  const start = Math.max(0, at - 120);
+  const end = Math.min(content.length, at + 280);
+  return (start > 0 ? "…" : "") + content.slice(start, end).replace(/\s+/g, " ") + (end < content.length ? "…" : "");
+}
+
 function Playbook() {
   const [query, setQuery] = useState("");
   const [term, setTerm] = useState("");
@@ -3112,6 +3163,101 @@ function Playbook() {
     });
   }, [term]);
 
+  const { getToken } = useAuth();
+  const [docs, setDocs] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [docErr, setDocErr] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const docInputRef = useRef(null);
+  const [canManage, setCanManage] = useState(false);
+  const [pending, setPending] = useState(null); // extracted but NOT yet published: { filename, mimeType, text }
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/playbook-documents", { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't load your documents"));
+        if (!cancelled) setDocs(data.documents || []);
+        if (!cancelled) setCanManage(!!data.canManage);
+      } catch (e) {
+        if (!cancelled) setDocErr(e.message);
+      } finally {
+        if (!cancelled) setDocsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [getToken]);
+
+  // Step 1 of 2: extract in the browser and show what WOULD be published. Nothing is sent yet.
+  const prepareDoc = async (file) => {
+    if (!file) return;
+    setDocErr("");
+    setPending(null);
+    if (file.size > DOC_MAX_BYTES) { setDocErr("That file is over 10 MB — please use a smaller document."); return; }
+    setUploading(true);
+    try {
+      const { mimeType, text } = await extractDocText(file);
+      if (!text.trim()) throw new Error("No readable text found in this document (a scanned/image-only PDF has none to extract).");
+      setPending({ filename: file.name, mimeType, text });
+    } catch (e) {
+      setDocErr(e.message || "Couldn't read this file — try a different one.");
+    } finally {
+      setUploading(false);
+      if (docInputRef.current) docInputRef.current.value = "";
+    }
+  };
+
+  // Step 2 of 2: only after the explicit "Publish to all customers" click.
+  const publishDoc = async () => {
+    if (!pending) return;
+    setDocErr("");
+    setPublishing(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/playbook-documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ category: DOC_CATEGORY, filename: pending.filename, mimeType: pending.mimeType, content: pending.text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Upload failed"));
+      setDocs((prev) => [data.document, ...prev.filter((d) => d.category !== data.document.category)]);
+      setPending(null);
+    } catch (e) {
+      setDocErr(e.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const deleteDoc = async (category) => {
+    if (!window.confirm("Remove this document for ALL customers? Its text will disappear from every customer's Playbook.")) return;
+    setDocErr("");
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/playbook-documents?category=${encodeURIComponent(category)}`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't remove the document"));
+      setDocs((prev) => prev.filter((d) => d.category !== category));
+    } catch (e) {
+      setDocErr(e.message);
+    }
+  };
+
+  const words = term ? term.split(/\s+/) : [];
+  const shownDocs = useMemo(
+    () => (words.length ? docs.filter((d) => words.every((w) => `${d.filename} ${d.content}`.toLowerCase().includes(w))) : docs),
+    [docs, term] // eslint-disable-line
+  );
+  const noResults = shown.length === 0 && shownDocs.length === 0;
+
   const supportLink = <a href="mailto:marketing@auk-maritime.com" style={{ color: "var(--brass-hi)" }}>marketing@auk-maritime.com</a>;
 
   return (
@@ -3128,7 +3274,7 @@ function Playbook() {
         </div>
       </div>
 
-      {shown.length === 0 && (
+      {noResults && (
         <div className="card" style={{ textAlign: "center", padding: 28 }}>
           <div className="disp" style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>No playbook entries match "{query.trim()}"</div>
           <div style={{ fontSize: 14, color: "var(--slate)" }}>
@@ -3158,6 +3304,86 @@ function Playbook() {
           </div>
         ))}
       </div>
+
+      {(canManage || docs.length > 0) && (
+      <div style={{ marginTop: 28 }}>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{DOC_CATEGORY_LABEL}</div>
+
+        {canManage && (
+          <>
+            <input ref={docInputRef} type="file" accept=".docx,.pdf" style={{ display: "none" }} onChange={(e) => prepareDoc(e.target.files?.[0])} />
+            <div
+              onClick={() => !uploading && docInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!uploading) prepareDoc(e.dataTransfer.files?.[0]); }}
+              style={{
+                border: `1px dashed ${dragOver ? "var(--brass)" : "var(--slate)"}`, borderStyle: dragOver ? "solid" : "dashed",
+                borderRadius: 10, padding: "22px 16px", textAlign: "center", cursor: uploading ? "default" : "pointer",
+                background: dragOver ? "rgba(191, 149, 63, 0.08)" : "transparent", transition: "background 0.15s, border-color 0.15s",
+              }}
+            >
+              {uploading
+                ? <div style={{ fontSize: 14 }}><Loader2 size={16} style={{ animation: "spin 1s linear infinite", verticalAlign: -3 }} /> Reading document…</div>
+                : <><UploadCloud size={22} style={{ opacity: 0.6, marginBottom: 8 }} /><div style={{ fontSize: 14 }}>Drop a Word (.docx) or PDF file here, or click to browse</div></>}
+            </div>
+            <div className="hint" style={{ marginTop: 10 }}>
+              Accepted: .docx, .pdf · up to 10 MB · <b>visible to all customers</b> · its text becomes searchable in every customer's Playbook. Publishing a new file replaces the current one.
+            </div>
+
+            {pending && (
+              <div className="card" style={{ marginTop: 14, borderColor: "var(--red)" }}>
+                <div className="disp" style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>Publish to ALL customers?</div>
+                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                  <b>{pending.filename}</b> · {pending.text.length.toLocaleString()} characters
+                  {pending.text.length > 100000 && " (only the first 100,000 will be saved)"}
+                </div>
+                <div style={{ fontSize: 14, marginBottom: 10 }}>
+                  Every customer will be able to read this document's text in their own Playbook. Do not publish anything confidential.
+                  {docs.find((d) => d.category === DOC_CATEGORY) && <> This will <b>replace</b> “{docs.find((d) => d.category === DOC_CATEGORY).filename}”.</>}
+                </div>
+                <div className="hint" style={{ marginBottom: 6 }}>Text that will be published (start of document):</div>
+                <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--slate)", maxHeight: 160, overflowY: "auto", marginBottom: 12 }}>
+                  {pending.text.slice(0, 600)}{pending.text.length > 600 ? "…" : ""}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="btn" onClick={publishDoc} disabled={publishing}>{publishing ? "Publishing…" : "Publish to all customers"}</button>
+                  <button className="btn ghost sm" onClick={() => setPending(null)} disabled={publishing}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {docErr && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 8 }}>{docErr}</div>}
+
+        {docsLoading && <div className="hint" style={{ marginTop: 12 }}><Loader2 size={13} style={{ animation: "spin 1s linear infinite", verticalAlign: -2 }} /> Loading…</div>}
+
+        {shownDocs.map((d) => (
+          <div className="card" key={d.category} style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+              <div className="disp" style={{ fontSize: 18, fontWeight: 600 }}>{highlightTerms(d.filename, words)}</div>
+              <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>{DOC_CATEGORY_LABEL}</span>
+              {canManage && <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => deleteDoc(d.category)}><Trash2 size={13} style={{ verticalAlign: -2 }} /> Remove</button>}
+            </div>
+            <div className="hint" style={{ marginBottom: 8 }}>
+              Uploaded {new Date(d.uploaded_at).toLocaleDateString()} · {d.char_count.toLocaleString()} characters
+            </div>
+            {d.truncated && (
+              <div className="note" style={{ marginBottom: 8, borderColor: "var(--brass)" }}>
+                This document was long — only the first 100,000 characters were saved and are searchable.
+              </div>
+            )}
+            <div style={{ fontSize: 13, color: "var(--slate)" }}>{highlightTerms(docSnippet(d.content, words), words)}</div>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--brass-hi)" }}>Show full text</summary>
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--slate)", maxHeight: 360, overflowY: "auto", marginTop: 8 }}>
+                {highlightTerms(d.content, words)}
+              </div>
+            </details>
+          </div>
+        ))}
+      </div>
+      )}
 
       <div className="note" style={{ marginTop: 16 }}>
         <b>Message framework:</b> decide <i>what to say</i> (rational · emotional · moral), <i>how to say it</i> (a clear argument for why they must choose you, attention-catching words and graphics), and carry it through personal and non-personal channels alike — sales conversations, word of mouth and collected opinions included.
