@@ -3095,6 +3095,25 @@ const AIDA_OF_STEP = ["Foundation", "Awareness", "Awareness", "Awareness", "Inte
 const STAGE_CLR = { Foundation: "var(--slate)", Awareness: "var(--slate)", Interest: "var(--teal)", Decision: "var(--brass)", Retention: "var(--green)" };
 
 function Playbook() {
+  const [query, setQuery] = useState("");
+  const [term, setTerm] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(query.trim().toLowerCase()), 200);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Case-insensitive match on title + all body fields; every word typed must appear somewhere in the entry
+  const shown = useMemo(() => {
+    if (!term) return PLAYBOOK;
+    const words = term.split(/\s+/);
+    return PLAYBOOK.filter((s) => {
+      const hay = `${s.what} ${s.media} ${s.prospect} ${s.sales} ${AIDA_OF_STEP[s.step]}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [term]);
+
+  const supportLink = <a href="mailto:marketing@auk-maritime.com" style={{ color: "var(--brass-hi)" }}>marketing@auk-maritime.com</a>;
+
   return (
     <>
       <div className="sechead">
@@ -3102,17 +3121,33 @@ function Playbook() {
         <div className="sub">The step-by-step journey a prospect travels — what you do, what the channel does, what the prospect does, and the sales move at each step.</div>
       </div>
 
+      <div style={{ marginBottom: 14 }}>
+        <input className="inp" type="search" placeholder="Search the playbook…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search the playbook" />
+        <div style={{ marginTop: 6, fontSize: 13, color: "var(--muted)" }}>
+          Still didn't find what you needed? Contact {supportLink}
+        </div>
+      </div>
+
+      {shown.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: 28 }}>
+          <div className="disp" style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>No playbook entries match "{query.trim()}"</div>
+          <div style={{ fontSize: 14, color: "var(--slate)" }}>
+            Try different words, or contact {supportLink} and we'll help you find what you need.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {PLAYBOOK.map((s, i) => (
+        {shown.map((s, i) => (
           <div className="card" key={s.step} style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 16 }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
               <div className="disp mono" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--brass)", color: "var(--brass)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700 }}>{s.step}</div>
-              {i < PLAYBOOK.length - 1 && <div style={{ width: 1, flex: 1, background: "var(--line)" }} />}
+              {i < shown.length - 1 && <div style={{ width: 1, flex: 1, background: "var(--line)" }} />}
             </div>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
                 <div className="disp" style={{ fontSize: 18, fontWeight: 600 }}>{s.what}</div>
-                <span className="pill" style={{ background: "var(--navy-700)", color: STAGE_CLR[AIDA_OF_STEP[i]] }}>{AIDA_OF_STEP[i]}</span>
+                <span className="pill" style={{ background: "var(--navy-700)", color: STAGE_CLR[AIDA_OF_STEP[s.step]] }}>{AIDA_OF_STEP[s.step]}</span>
               </div>
               <div className="grid g3">
                 <div><div className="eyebrow" style={{ fontSize: 10.5, marginBottom: 4 }}>Action by the channel</div><div style={{ fontSize: 13, color: "var(--slate)" }}>{s.media}</div></div>
