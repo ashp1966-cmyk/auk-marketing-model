@@ -1095,13 +1095,23 @@ function AppShell({ savedData }) {
 function TrialLockedBanner({ trialStatus, onGoToBilling }) {
   const hitCaps = Object.values(trialStatus?.perFeature || {}).filter((f) => f.blocked);
   const expired = !!trialStatus?.expired;
+  // Cancelled (subscription ended) and unrecognized-status lockouts are their own cases, not
+  // trial situations -- a paying client whose plan lapsed must not be told their "trial" ended.
+  const cancelled = !!trialStatus?.cancelled;
+  const inactive = !!trialStatus?.inactive;
+  const title = cancelled ? "Your subscription has ended" : inactive ? "Subscription not active" : expired ? "Your trial has ended" : "Trial limit reached";
+  const body = cancelled
+    ? "Choose a plan in Billing to resubscribe."
+    : inactive
+      ? "Your subscription isn't active — visit Billing or email sales@auk-maritime.com."
+      : expired
+        ? "Your 7-day trial has ended — subscribe to continue."
+        : `You've used all your trial ${hitCaps.map((f) => `${f.label} (${f.used}/${f.cap})`).join(", ")} — subscribe to continue.`;
   return (
     <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-      <h3 style={{ margin: 0 }}>{expired ? "Your trial has ended" : "Trial limit reached"}</h3>
+      <h3 style={{ margin: 0 }}>{title}</h3>
       <p style={{ color: "var(--slate)", marginTop: 8, maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>
-        {expired
-          ? "Your 7-day trial has ended — subscribe to continue."
-          : `You've used all your trial ${hitCaps.map((f) => `${f.label} (${f.used}/${f.cap})`).join(", ")} — subscribe to continue.`}
+        {body}
       </p>
       <button className="btn" style={{ marginTop: 16 }} onClick={onGoToBilling}>Go to Billing</button>
     </div>
@@ -2324,6 +2334,9 @@ function Billing({ companyName }) {
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(null); // plan id currently redirecting
   const [error, setError] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false); // confirmation panel visible
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
 
   const PLANS = [
     { id: "startup", name: "Startup", price: 450, planCode: "PLN_nxjgctcp3gxlct6", blurb: "For early-stage businesses testing the platform." },
@@ -2369,12 +2382,34 @@ function Billing({ companyName }) {
     }
   }
 
+  async function cancelSubscription() {
+    setError("");
+    setCancelling(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/billing/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not cancel the subscription");
+      setCancelOpen(false);
+      setCancelReason("");
+      await load();
+    } catch (err) {
+      setError(err.message || "Could not cancel the subscription");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const STATUS_LABEL = {
     trialing: "Trial",
     active: "Active",
     past_due: "Payment overdue",
     suspended: "Suspended",
-    canceled: "Canceled",
+    cancelled: "Cancelled",
   };
 
   return (
@@ -2390,6 +2425,52 @@ function Billing({ companyName }) {
             {status?.paidUntil ? <span> · paid until {new Date(status.paidUntil).toLocaleDateString()}</span> : null}
           </div>
         )}
+        {!loading && status?.billingStatus === "cancelled" ? (
+          <div style={{ marginTop: 12 }}>
+            Your subscription has ended. Choose a plan below to resubscribe.
+          </div>
+        ) : null}
+        {!loading && status?.billingStatus === "active" ? (
+          <div style={{ marginTop: 12 }}>
+            {status.cancelAtPeriodEnd ? (
+              <div>
+                Your plan ends{status.paidUntil ? <> on <strong>{new Date(status.paidUntil).toLocaleDateString()}</strong></> : null}. No further charges.
+              </div>
+            ) : (
+              <>
+                {status.hasSubscriptionOnFile && !cancelOpen ? (
+                  <button className="btn sm ghost" onClick={() => setCancelOpen(true)}>Cancel subscription</button>
+                ) : null}
+                {cancelOpen ? (
+                  <div style={{ border: "1px solid var(--line)", borderRadius: 9, padding: 12, maxWidth: 520 }}>
+                    <div style={{ marginBottom: 8 }}>
+                      Your plan stays active{status.paidUntil ? <> until <strong>{new Date(status.paidUntil).toLocaleDateString()}</strong></> : null}, with no further charges after that.
+                    </div>
+                    <input
+                      className="inp"
+                      type="text"
+                      maxLength={200}
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="Reason for cancelling (optional)"
+                      style={{ marginBottom: 8 }}
+                      disabled={cancelling}
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn sm" onClick={() => setCancelOpen(false)} disabled={cancelling}>Keep my plan</button>
+                      <button className="btn sm ghost" onClick={cancelSubscription} disabled={cancelling}>
+                        {cancelling ? "Cancelling…" : "Confirm cancellation"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                <div style={{ marginTop: 8, fontSize: 13, color: "var(--muted)" }}>
+                  Prefer to talk to someone? <a href="mailto:sales@auk-maritime.com" style={{ color: "var(--brass-hi)" }}>sales@auk-maritime.com</a>
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
         {error ? <div style={{ color: "var(--red)", marginTop: 8 }}>{error}</div> : null}
       </div>
 
@@ -2401,14 +2482,19 @@ function Billing({ companyName }) {
               <h4 style={{ marginTop: 0 }}>{plan.name}</h4>
               <div style={{ fontSize: 24, fontWeight: 700 }}>R{plan.price.toLocaleString()}<span style={{ fontSize: 13, fontWeight: 400 }}>/mo</span></div>
               <p style={{ color: "var(--muted)", fontSize: 13 }}>{plan.blurb}</p>
-              <button
-                className="btn sm"
-                style={{ width: "100%", justifyContent: "center" }}
-                disabled={isCurrent || subscribing === plan.id}
-                onClick={() => subscribe(plan)}
-              >
-                {isCurrent ? "Current plan" : subscribing === plan.id ? "Redirecting…" : "Subscribe"}
-              </button>
+              {/* While a cancellation is pending, Subscribe is hidden on the other plans (resubscribing
+                  mid-cancel is an untested, possibly-conflicting double action) but the current
+                  plan keeps its disabled "Current plan" marker. */}
+              {status?.cancelAtPeriodEnd && !isCurrent ? null : (
+                <button
+                  className="btn sm"
+                  style={{ width: "100%", justifyContent: "center" }}
+                  disabled={isCurrent || subscribing === plan.id}
+                  onClick={() => subscribe(plan)}
+                >
+                  {isCurrent ? "Current plan" : subscribing === plan.id ? "Redirecting…" : "Subscribe"}
+                </button>
+              )}
             </div>
           );
         })}

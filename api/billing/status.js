@@ -19,7 +19,9 @@ export default async function handler(req, res) {
   try {
     const row = await withTenant(orgId, async (client) => {
       const { rows } = await client.query(
-        'select billing_status, plan_code, paid_until from tenants where id = $1',
+        `select billing_status, plan_code, paid_until, cancel_at_period_end,
+                (paystack_subscription_code is not null and paystack_email_token is not null) as has_subscription_on_file
+         from tenants where id = $1`,
         [orgId]
       );
       return rows[0] || null;
@@ -29,6 +31,9 @@ export default async function handler(req, res) {
       billingStatus: row?.billing_status || 'trialing',
       planCode: row?.plan_code || null,
       paidUntil: row?.paid_until || null,
+      cancelAtPeriodEnd: !!row?.cancel_at_period_end,
+      // Boolean only -- the subscription code / email token themselves never leave the server.
+      hasSubscriptionOnFile: !!row?.has_subscription_on_file,
     });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to load billing status' });

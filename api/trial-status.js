@@ -6,7 +6,7 @@
 // usage load shape as checkTrialGate rather than a third copy of the cap logic.
 import { resolveOrgId } from './_lib/auth.js';
 import { withTenant } from './_lib/db.js';
-import { CAPS, CAP_LABELS, TRIAL_DAYS } from './_lib/trial-gate.js';
+import { CAPS, CAP_LABELS, TRIAL_DAYS, classifyBillingStatus } from './_lib/trial-gate.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -27,13 +27,19 @@ export default async function handler(req, res) {
       );
       if (!tenant) return null;
 
-      // Same exemption as checkTrialGate: AUK's own tenant and any subscribed tenant
-      // are never trial-gated, so the UI never greys anything out for them.
-      const exempt = tenant.plan_code === 'internal' || tenant.billing_status !== 'trialing';
+      // Classified by the SAME function checkTrialGate uses, so this UI lock and the real
+      // server-side gate can never disagree. `exempt` = never gated (AUK's own tenant, or an
+      // active paid subscription). `denied` = locked out regardless of trial caps: a cancelled
+      // subscription, or any unrecognized status (fail closed — see classifyBillingStatus).
+      const kind = classifyBillingStatus(tenant);
+      const exempt = kind === 'internal' || kind === 'active';
+      const trialing = kind === 'trialing';
+      const cancelled = kind === 'cancelled';
+      const denied = cancelled || kind === 'unrecognized';
 
       const trialEndsAt = new Date(new Date(tenant.created_at).getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
       const daysLeft = Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-      const expired = !exempt && Date.now() > trialEndsAt.getTime();
+      const expired = trialing && Date.now() > trialEndsAt.getTime();
 
       const { rows: usageRows } = await client.query(
         `select coalesce(sum(research_runs), 0)::int     as research_runs,
@@ -56,17 +62,20 @@ export default async function handler(req, res) {
       for (const feature of Object.keys(CAPS)) {
         const used = usage[feature];
         const cap = CAPS[feature];
-        const blocked = !exempt && used >= cap;
+        const blocked = denied || (trialing && used >= cap);
         if (!blocked) allCapsHit = false;
         perFeature[feature] = { label: CAP_LABELS[feature], used, cap, blocked };
       }
 
       return {
         exempt,
-        trialing: !exempt,
+        trialing,
+        cancelled,
+        // 'unrecognized' status: locked, but not claimed to be a cancellation
+        inactive: denied && !cancelled,
         expired,
         daysLeft,
-        blocked: !exempt && (expired || allCapsHit),
+        blocked: denied || (trialing && (expired || allCapsHit)),
         perFeature,
       };
     });

@@ -135,13 +135,44 @@ async function handleSubscriptionCreate(data) {
   const tenantId = await findTenantId(data);
   if (!tenantId) return { ok: false, unmatched: true };
 
+  // A new subscription also clears any pending-cancel flag left over from the previous one
+  // (cancel_reason is kept as the last cancellation's churn signal).
   await sql`
     update tenants
     set paystack_subscription_code = ${subscriptionCode},
-        paystack_email_token = ${emailToken}
+        paystack_email_token = ${emailToken},
+        cancel_at_period_end = false,
+        cancel_requested_at = null
     where id = ${tenantId}
   `;
   return { ok: true, tenantId };
+}
+
+// subscription.not_renew fires when a subscription is cancelled -- whether through our
+// POST /api/billing/cancel or directly in Paystack's dashboard (observed on a real live event,
+// 2026-10-01; its status is 'non-renewing'). Records the same pending-cancel flag the cancel
+// endpoint sets, which self-heals the case where Paystack accepted a cancel but our DB write
+// failed, and syncs out-of-band cancellations. Matched on subscription_code (precise: a
+// customer could in principle hold more than one subscription). Unmatched is skipped with a
+// 200 and no retry -- unlike subscription.create there's no ordering race to wait out.
+// billing_status / paid_until are NOT touched: access continues through paid_until.
+async function handleSubscriptionNotRenew(data) {
+  const subscriptionCode = data?.subscription_code;
+  if (typeof subscriptionCode !== 'string' || !subscriptionCode) {
+    console.error('[paystack-webhook] subscription.not_renew missing subscription_code; skipped');
+    return { ok: true, skipped: true };
+  }
+  const rows = await sql`
+    update tenants
+    set cancel_at_period_end = true,
+        cancel_requested_at = coalesce(cancel_requested_at, now())
+    where paystack_subscription_code = ${subscriptionCode}
+    returning id
+  `;
+  if (rows.length === 0) {
+    console.error('[paystack-webhook] subscription.not_renew matched no tenant; skipped');
+  }
+  return { ok: true, matched: rows.length };
 }
 
 export default async function handler(req, res) {
@@ -206,6 +237,8 @@ export default async function handler(req, res) {
         console.error('[paystack-webhook] subscription.create had no matching tenant yet; released for retry');
         return res.status(500).json({ error: 'No matching tenant yet; will retry' });
       }
+    } else if (event === 'subscription.not_renew') {
+      await handleSubscriptionNotRenew(data);
     } else if (event === 'subscription.disable' || event === 'invoice.payment_failed') {
       // TODO: fill in once real payload shape is captured and reviewed (see file header).
       // Payload is already stored in webhook_events for inspection.

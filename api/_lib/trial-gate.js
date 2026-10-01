@@ -39,6 +39,26 @@ const CAP_LABELS_SINGULAR = {
   trend_radar_scans: 'Trend Radar scan',
 };
 
+// The ONE place a tenant's billing state is classified, shared by checkTrialGate below and
+// api/trial-status.js so the real gate and the UI lock can never disagree about what a status
+// means. It is an explicit ALLOWLIST: a billing gate's default must be deny-unless-allowed, so
+// any billing_status not named here classifies as 'unrecognized' and is treated as locked out
+// (fail closed) rather than silently granted access the way an `!== 'trialing'` exclusion would.
+//   internal     -> AUK's own tenant (plan_code 'internal'), never gated
+//   active       -> paid, full access
+//   trialing     -> subject to the trial expiry + usage caps
+//   cancelled    -> subscription ended (period-end job flips active -> cancelled), locked out
+//   unrecognized -> anything else (incl. a future/unset status), locked out
+export function classifyBillingStatus(tenant) {
+  if (tenant.plan_code === 'internal') return 'internal';
+  switch (tenant.billing_status) {
+    case 'active': return 'active';
+    case 'trialing': return 'trialing';
+    case 'cancelled': return 'cancelled';
+    default: return 'unrecognized';
+  }
+}
+
 // `client` must already be inside withTenant(orgId, ...) — RLS scopes both queries below
 // to the caller's own tenant row regardless of the orgId passed in. Returns
 // { blocked: false } when the action may proceed, or { blocked: true, status, body }
@@ -56,16 +76,24 @@ export async function checkTrialGate(client, orgId, feature) {
     return { blocked: true, status: 404, body: { error: 'Tenant not found' } };
   }
 
-  // AUK's own tenant — exempt from all trial gating, always.
-  if (tenant.plan_code === 'internal') {
-    return { blocked: false };
-  }
-
-  // Once subscribed, trial caps no longer apply — real plan limits are separate,
-  // not-yet-built work. A lapsed/suspended subscription is Checkpoint 4's own gate,
-  // not this one.
-  if (tenant.billing_status !== 'trialing') {
-    return { blocked: false };
+  switch (classifyBillingStatus(tenant)) {
+    case 'internal': // AUK's own tenant — exempt from all gating, always.
+    case 'active':   // Once subscribed, trial caps no longer apply — real plan limits are separate, not-yet-built work.
+      return { blocked: false };
+    case 'trialing':
+      break; // trial expiry + caps below
+    case 'cancelled':
+      return {
+        blocked: true,
+        status: 402,
+        body: { error: 'subscription_cancelled', message: 'Your subscription has ended — resubscribe to continue.' },
+      };
+    default: // 'unrecognized' — fail closed
+      return {
+        blocked: true,
+        status: 402,
+        body: { error: 'subscription_inactive', message: "Your subscription isn't active — visit Billing or email sales@auk-maritime.com." },
+      };
   }
 
   const trialEndsAt = new Date(tenant.created_at).getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000;
