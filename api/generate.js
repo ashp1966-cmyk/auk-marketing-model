@@ -3,6 +3,7 @@ import { callClaude } from './_lib/anthropic-client.js';
 import { resolveOrgId } from './_lib/auth.js';
 import { withTenant } from './_lib/db.js';
 import { checkTrialGate, CAPS } from './_lib/trial-gate.js';
+import { shapeGenerateRequest } from './_lib/generate-request.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -20,8 +21,16 @@ export default async function handler(req, res) {
   // generators) is being updated to send this; there is no ungated caller of this
   // endpoint by design.
   const { feature } = req.body || {};
-  if (!feature || !(feature in CAPS)) {
+  // typeof first: Object.hasOwn coerces its key, so an array like ["research_runs"] would pass.
+  if (typeof feature !== 'string' || !Object.hasOwn(CAPS, feature)) {
     return res.status(400).json({ error: 'Missing or unrecognized feature' });
+  }
+
+  // The client chooses `feature` and the whole request, so neither can be trusted to describe the
+  // cost of the call. Rebuild the Anthropic request from an allowlist; anything outside it is a 400.
+  const shaped = shapeGenerateRequest(req.body);
+  if (!shaped.ok) {
+    return res.status(400).json({ error: shaped.code, message: shaped.message });
   }
 
   try {
@@ -30,9 +39,7 @@ export default async function handler(req, res) {
       return res.status(gate.status).json(gate.body);
     }
 
-    const { messages, ...opts } = req.body || {};
-    delete opts.feature;
-    const { status, data } = await callClaude(messages, opts);
+    const { status, data } = await callClaude(shaped.messages, shaped.opts);
     return res.status(status).json(data);
   } catch (err) {
     return res.status(500).json({ error: 'API call failed', detail: err.message });
