@@ -2427,6 +2427,9 @@ function Billing({ companyName }) {
     cancelled: "Cancelled",
   };
 
+  const isActive = status?.billingStatus === "active";
+  const isInternal = status?.planCode === "internal";
+
   return (
     <div>
       <div className="card" style={{ marginBottom: 16 }}>
@@ -2491,16 +2494,18 @@ function Billing({ companyName }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         {PLANS.map((plan) => {
-          const isCurrent = status?.planCode === plan.planCode && status?.billingStatus === "active";
+          const isCurrent = status?.planCode === plan.planCode && isActive;
           return (
             <div className="card" key={plan.id}>
               <h4 style={{ marginTop: 0 }}>{plan.name}</h4>
               <div style={{ fontSize: 24, fontWeight: 700 }}>R{plan.price.toLocaleString()}<span style={{ fontSize: 13, fontWeight: 400 }}>/mo</span></div>
               <p style={{ color: "var(--muted)", fontSize: 13 }}>{plan.blurb}</p>
-              {/* While a cancellation is pending, Subscribe is hidden on the other plans (resubscribing
-                  mid-cancel is an untested, possibly-conflicting double action) but the current
-                  plan keeps its disabled "Current plan" marker. */}
-              {status?.cancelAtPeriodEnd && !isCurrent ? null : (
+              {/* Active tenants can't self-serve a plan change: a second Paystack checkout would create a
+                  second subscription without cancelling the first (double billing). Subscribe is hidden
+                  on every other plan; the current plan keeps its disabled "Current plan" marker. The
+                  internal (platform owner) account has no paid plan, so no card offers Subscribe. This
+                  also covers a pending cancellation, which the old condition handled on its own. */}
+              {isInternal || (isActive && !isCurrent) ? null : (
                 <button
                   className="btn sm"
                   style={{ width: "100%", justifyContent: "center" }}
@@ -2514,6 +2519,14 @@ function Billing({ companyName }) {
           );
         })}
       </div>
+
+      {isInternal ? (
+        <div style={{ marginTop: 12, fontSize: 13, color: "var(--muted)" }}>Internal account</div>
+      ) : isActive ? (
+        <div style={{ marginTop: 12, fontSize: 13, color: "var(--muted)" }}>
+          To change plan, email <a href="mailto:sales@auk-maritime.com" style={{ color: "var(--brass-hi)" }}>sales@auk-maritime.com</a>
+        </div>
+      ) : null}
     </div>
   );
 }
