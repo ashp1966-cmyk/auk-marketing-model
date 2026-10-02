@@ -2361,6 +2361,21 @@ function Billing({ companyName }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Returning from Paystack with the back button can restore this page from the browser's
+  // back/forward cache with `subscribing` frozen on "Redirecting…". event.persisted is true
+  // only for such a restore: clear the busy state and re-fetch, since the status may have
+  // changed while the user was away.
+  useEffect(() => {
+    const onPageShow = (event) => {
+      if (event.persisted) {
+        setSubscribing(null);
+        load();
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [load]);
+
   async function subscribe(plan) {
     setError("");
     setSubscribing(plan.id);
