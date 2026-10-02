@@ -19,9 +19,17 @@ export async function resolveOrgId(req) {
     // This Clerk instance issues v2 session tokens, which carry org info as a
     // compact `o: {id, rol, slg}` claim rather than a flat org_id field.
     const orgId = claims.org_id || claims.o?.id || null;
-    if (!orgId) return null;
+    if (!orgId) {
+      // A valid token with no active organization: say so, so this 401 can be told apart from an
+      // expired or invalid token in the log.
+      console.error('[auth] token has no organization claim');
+      return null;
+    }
     return { orgId, userId: claims.sub };
   } catch (err) {
+    // Say WHY verification failed (Clerk's reason code, e.g. token-expired) so a 401 is diagnosable from
+    // the log. Only the reason code / error name is logged: never the token, secret key or header values.
+    console.error('[auth] token verification failed:', err?.reason || err?.name || 'unknown');
     return null;
   }
 }

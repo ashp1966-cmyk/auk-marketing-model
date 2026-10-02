@@ -217,7 +217,7 @@ function apiErrorMessage(data, fallback) {
 // rather than assuming everything after the opening brace is valid JSON.
 function extractJson(text) {
   const start = text.indexOf("{");
-  if (start === -1) throw new Error("No JSON object found in response");
+  if (start === -1) throw Object.assign(new Error("No JSON object found in response"), { rawReply: text });
   let depth = 0, inString = false, escape = false;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
@@ -228,10 +228,72 @@ function extractJson(text) {
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (depth === 0) return JSON.parse(text.slice(start, i + 1));
+      if (depth === 0) {
+        const slice = text.slice(start, i + 1);
+        try { return JSON.parse(slice); }
+        catch (e) {
+          // Keep what the model actually said so a failed parse after a paid call is diagnosable.
+          // `around` is the 200 characters centred on the error position: the only part ever logged.
+          const pos = jsonErrorOffset(e.message, slice);
+          throw Object.assign(e, {
+            rawReply: text,
+            errorPosition: pos,
+            around: pos === null ? null : slice.slice(Math.max(0, pos - 100), pos + 100),
+          });
+        }
+      }
     }
   }
-  throw new Error("Unterminated JSON object in response");
+  throw Object.assign(new Error("Unterminated JSON object in response"), { rawReply: text });
+}
+
+// Offset of a JSON.parse error into `slice`, or null when the engine doesn't say where. Chrome/Node say
+// "at position N"; Firefox says "at line L column C" (1-based; converted to an offset here); Safari and
+// the "is not valid JSON" wording give no location at all.
+function jsonErrorOffset(message, slice) {
+  const msg = String(message);
+  const p = msg.match(/position (\d+)/);
+  if (p) return Number(p[1]);
+  const lc = msg.match(/line (\d+) column (\d+)/);
+  if (!lc) return null;
+  const line = Number(lc[1]), col = Number(lc[2]);
+  const lines = slice.split("\n");
+  if (line < 1 || line > lines.length || col < 1) return null;
+  let offset = 0;
+  for (let i = 0; i < line - 1; i++) offset += lines[i].length + 1;
+  offset += col - 1;
+  return offset <= slice.length ? offset : null;
+}
+
+// Logs ONLY the error position and the 200 characters around it. Never the full reply, never e.message.
+function logParseFailure(label, e) {
+  console.error(`[${label}] reply could not be parsed; error at position ${e.errorPosition ?? "unknown"} of the JSON object`, e.around ? `…${e.around}…` : "");
+}
+
+// A usage-count request after a good /api/generate reply must never discard that reply: the money is
+// already spent. It gets a FRESH token (the one fetched before generate can be stale after a long
+// web-search call) and on any failure just warns. Logs the route and status only: no token, no body.
+async function recordUsage(getToken, path) {
+  try {
+    const token = await getToken({ skipCache: true });
+    const res = await fetch(path, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) return true;
+    console.warn(`[usage] ${path} returned ${res.status}; the result is kept but this use may not have been counted`);
+  } catch {
+    console.warn(`[usage] ${path} failed; the result is kept but this use may not have been counted`);
+  }
+  return false;
+}
+
+// Reply is held in component state by the caller; this only copies it to the clipboard on request.
+function CopyRawReply({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button className="btn ghost sm" onClick={async () => {
+      try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+      catch { console.warn("[copy] clipboard unavailable"); }
+    }}>{copied ? "Copied" : "Copy raw reply"}</button>
+  );
 }
 
 /* ---------------------------------------------------------------- manual prospect upload */
@@ -2115,14 +2177,11 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
       const entry = { id: Date.now(), service, platform, ...parsed };
       setStrategicPosts((c) => [entry, ...c]);
 
-      const usageRes = await fetch("/api/usage/campaign-draft", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      if (!usageRes.ok) {
-        const usageJson = await usageRes.json().catch(() => ({}));
-        setStrategicPosts((c) => c.filter((x) => x.id !== entry.id));
-        throw new Error(usageJson.message || usageJson.error || "Couldn't save this draft");
-      }
+      // The reply already cost money: count it with a fresh token, but never discard it if counting fails.
+      await recordUsage(getToken, "/api/usage/campaign-draft");
     } catch (e) {
       setStrategicErr(e.message || "Couldn't generate this post. Try again in a moment.");
+      if (e.rawReply) logParseFailure("campaign-strategic", e);
     } finally {
       setStrategicLoading(false);
     }
@@ -2161,17 +2220,11 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
       const entry = { id: Date.now(), service, platform, objective, ...parsed };
       setCalendar((c) => [entry, ...c]);
 
-      const usageRes = await fetch("/api/usage/campaign-draft", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      if (!usageRes.ok) {
-        // Cap was reached between /api/generate's own check and this call (or the client
-        // bypassed generate.js's check somehow) — don't leave the draft it already added
-        // sitting in the calendar as if it were a real, counted draft.
-        const usageJson = await usageRes.json().catch(() => ({}));
-        setCalendar((c) => c.filter((x) => x.id !== entry.id));
-        throw new Error(usageJson.message || usageJson.error || "Couldn't save this draft");
-      }
+      // The reply already cost money: count it with a fresh token, but never discard it if counting fails.
+      await recordUsage(getToken, "/api/usage/campaign-draft");
     } catch (e) {
       setErr(e.message || "Couldn't generate this post. Try again in a moment.");
+      if (e.rawReply) logParseFailure("campaign-quick", e);
     } finally {
       setLoading(false);
     }
@@ -2648,11 +2701,12 @@ function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, r
   const [trendArea, setTrendArea] = useState(TREND_AREAS[0]);
   const [trendBusy, setTrendBusy] = useState(false);
   const [trendErr, setTrendErr] = useState("");
+  const [trendRaw, setTrendRaw] = useState("");   // raw reply of a scan whose JSON couldn't be parsed
   const [activeScanId, setActiveScanId] = useState(null);
   const scan = scans.find((x) => x.id === activeScanId) || scans[0] || null;
 
   const scanTrends = async () => {
-    setTrendBusy(true); setTrendErr("");
+    setTrendBusy(true); setTrendErr(""); setTrendRaw("");
     const name = companyName || "this company";
     const prompt = `You are a senior strategy advisor to ${name}. Its service lines: ${svcs.map((s) => s.name).join(", ")}.
 
@@ -2682,18 +2736,14 @@ Return exactly 5 trends, ranked most important first.`;
       setScans((prev) => [newScan, ...prev].slice(0, 20));
       setActiveScanId(newScan.id);
 
-      const usageRes = await fetch("/api/usage/trend-radar-scan", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      if (!usageRes.ok) {
-        // Cap was reached between /api/generate's own check and this call (or the client
-        // bypassed generate.js's check somehow) — don't leave the scan it already added
-        // sitting in state as if it were a real, counted scan.
-        const usageJson = await usageRes.json().catch(() => ({}));
-        setScans((prev) => prev.filter((x) => x.id !== newScan.id));
-        setActiveScanId((id) => (id === newScan.id ? null : id));
-        throw new Error(usageJson.message || usageJson.error || "Couldn't save this scan");
-      }
+      // The reply already cost money: count it with a fresh token, but never discard it if counting fails.
+      await recordUsage(getToken, "/api/usage/trend-radar-scan");
     } catch (e) {
       setTrendErr(e.message || "Scan failed — try again in a moment.");
+      if (e.rawReply) {
+        setTrendRaw(e.rawReply);   // component state only: never logged or sent anywhere
+        logParseFailure("trend-radar", e);
+      }
     } finally { setTrendBusy(false); }
   };
 
@@ -3050,6 +3100,7 @@ Return exactly 5 trends, ranked most important first.`;
                   {trendBusy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Scanning the web…</> : <><Radar size={16} /> Scan trends</>}
                 </button>
                 {trendErr && <span style={{ color: "var(--red)", fontSize: 13 }}>{trendErr}</span>}
+                {trendRaw && <CopyRawReply text={trendRaw} />}
               </div>
             </div>
           </div>
@@ -3710,6 +3761,7 @@ function Prospecting({ svcs, companyName }) {
   const [activeRunId, setActiveRunId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [researchRaw, setResearchRaw] = useState("");   // raw reply of a run whose JSON couldn't be parsed
 
   const [mode, setMode] = useState("ai"); // "ai" | "upload"
   const [uploadFile, setUploadFile] = useState(null);
@@ -3984,9 +4036,11 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
       const parsed = extractJson(text);
       if (!parsed.subject || !parsed.body) throw new Error("Incomplete draft");
 
+      // Fresh token: the one fetched before the AI call can be stale by the time it returns.
+      const saveToken = await getToken({ skipCache: true });
       const saveRes = await fetch("/api/outreach", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${saveToken}` },
         body: JSON.stringify({ prospectId: prospect.id, subject: parsed.subject, body: parsed.body }),
       });
       const saveJson = await saveRes.json();
@@ -3995,6 +4049,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
       setDrafts((prev) => [saveJson.draft, ...prev]);
     } catch (e) {
       setDraftErr(e.message || "Couldn't draft this email — try again in a moment.");
+      if (e.rawReply) logParseFailure("outreach-draft", e);
     } finally {
       setDraftingId(null);
     }
@@ -4063,7 +4118,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
 
   const runResearch = async () => {
     if (!service) return;
-    setBusy(true); setErr("");
+    setBusy(true); setErr(""); setResearchRaw("");
     const audience = service.mkt?.audience || "";
     const geo = service.mkt?.geo || "";
     const prompt = `You are a business development researcher for ${companyName || "the company"}, prospecting for the service line "${service.name}".
@@ -4113,9 +4168,11 @@ Return up to 8 candidates, best fits first.`;
         estimatedUsd: (u.input_tokens || 0) / 1e6 * 3 + (u.output_tokens || 0) / 1e6 * 15 + searchRequests * 0.01,
       };
 
+      // Fresh token: a web-search run can outlast the token fetched before it.
+      const saveToken = await getToken({ skipCache: true });
       const saveRes = await fetch("/api/prospects", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${saveToken}` },
         body: JSON.stringify({
           serviceName: service.name,
           criteria: { audience, geo, costEstimate },
@@ -4129,6 +4186,7 @@ Return up to 8 candidates, best fits first.`;
       setActiveRunId(saveJson.run.id);
     } catch (e) {
       setErr(e.message || "Research failed — try again in a moment.");
+      if (e.rawReply) { setResearchRaw(e.rawReply); logParseFailure("research", e); }
     } finally {
       setBusy(false);
     }
@@ -4232,6 +4290,7 @@ Return up to 8 candidates, best fits first.`;
                 {busy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Researching…</> : <><Search size={16} /> Run research</>}
               </button>
               {err && <span style={{ color: "var(--red)", fontSize: 13 }}>{err}</span>}
+              {researchRaw && <CopyRawReply text={researchRaw} />}
             </div>
             <div className="hint" style={{ marginTop: 10 }}>
               Est. cost per run: ~$0.05–0.30 (up to 5 web searches, capped) — a rough guide, not a guarantee; check the actual figure shown on each saved run below.
