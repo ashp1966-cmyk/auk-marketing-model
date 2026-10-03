@@ -42,10 +42,13 @@ export default async function handler(req, res) {
              coalesce(u.campaign_drafts, 0)   as campaign_drafts,
              coalesce(u.outreach_drafts, 0)   as outreach_drafts,
              coalesce(u.trend_radar_scans, 0) as trend_radar_scans,
-             coalesce(u.emails_sent, 0)       as emails_sent
+             coalesce(u.emails_sent, 0)       as emails_sent,
+             coalesce(f.enabled, false)       as trend_radar_enabled
       from tenants t
       left join tenant_usage u
         on u.tenant_id = t.id and u.month = date_trunc('month', now())::date
+      left join tenant_features f
+        on f.tenant_id = t.id and f.feature = 'trend_radar'
       order by t.name
     `;
 
@@ -61,6 +64,8 @@ export default async function handler(req, res) {
         outreachDrafts: r.outreach_drafts,
         trendRadarScans: r.trend_radar_scans,
         emailsSent: r.emails_sent,
+        // Internal is always on and not switchable; everyone else follows their own row (missing = off).
+        trendRadar: { enabled: r.plan_code === 'internal' || r.trend_radar_enabled === true, always: r.plan_code === 'internal' },
         over: {
           researchRuns: trialing && r.research_runs > CAPS.research_runs,
           campaignDrafts: trialing && r.campaign_drafts > CAPS.campaign_drafts,
