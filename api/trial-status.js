@@ -7,6 +7,7 @@
 import { resolveOrgId } from './_lib/auth.js';
 import { withTenant } from './_lib/db.js';
 import { CAPS, CAP_LABELS, TRIAL_DAYS, classifyBillingStatus } from './_lib/trial-gate.js';
+import { GENERATE_FEATURE_SWITCH, isFeatureEnabled } from './_lib/feature-flags.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -81,7 +82,18 @@ export default async function handler(req, res) {
     });
 
     if (!result) return res.status(404).json({ error: 'Tenant not found' });
-    return res.status(200).json(result);
+
+    // Per-tenant switches the UI needs, from the same helper and mapping generate.js enforces with. UX only:
+    // the server decides. The lookup runs in its OWN transaction so a failure in it can never touch the lock
+    // queries above, and a failure shows "off" (and is logged by code/name only: no message, no query text)
+    // instead of taking the trial-lock information down with it.
+    const trendRadar = await withTenant(orgId, (client) =>
+      isFeatureEnabled(client, orgId, GENERATE_FEATURE_SWITCH.trend_radar_scans)
+    ).catch((err) => {
+      console.error('[trial-status] feature switch lookup failed', err?.code || err?.name);
+      return false;
+    });
+    return res.status(200).json({ ...result, features: { trendRadar } });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to load trial status' });
   }

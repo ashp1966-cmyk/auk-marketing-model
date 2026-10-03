@@ -4,6 +4,7 @@ import { resolveOrgId } from './_lib/auth.js';
 import { withTenant } from './_lib/db.js';
 import { checkTrialGate, CAPS } from './_lib/trial-gate.js';
 import { shapeGenerateRequest } from './_lib/generate-request.js';
+import { GENERATE_FEATURE_SWITCH, isFeatureEnabled, featureDisabledBody } from './_lib/feature-flags.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -34,7 +35,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const gate = await withTenant(auth.orgId, (client) => checkTrialGate(client, auth.orgId, feature));
+    // ONE transaction. A per-tenant switch (only Trend Radar has one today) is checked BEFORE the trial gate,
+    // so a switched-off tenant gets feature_disabled and never reaches Anthropic. The dry-run branch lives
+    // inside callClaude, after this, so the switch is also checked before dry run. A DB error throws to the
+    // catch below (500) before any AI call: it fails closed.
+    const gate = await withTenant(auth.orgId, async (client) => {
+      const switchKey = Object.hasOwn(GENERATE_FEATURE_SWITCH, feature) ? GENERATE_FEATURE_SWITCH[feature] : null;
+      if (switchKey && !(await isFeatureEnabled(client, auth.orgId, switchKey))) {
+        return { blocked: true, status: 403, body: featureDisabledBody(switchKey) };
+      }
+      return checkTrialGate(client, auth.orgId, feature);
+    });
     if (gate.blocked) {
       return res.status(gate.status).json(gate.body);
     }
