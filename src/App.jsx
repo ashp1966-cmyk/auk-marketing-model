@@ -1140,7 +1140,7 @@ function AppShell({ savedData }) {
           {tab === "prospect" && gated("prospect", <Prospecting svcs={svcs} companyName={companyName} />)}
           {tab === "crm" && gated("crm", <CRM svcs={svcs} rows={crmRows} setRows={setCrmRows} fb={crmFb} setFb={setCrmFb} />)}
           {tab === "mis" && gated("mis", <MIS svcs={svcs} actuals={actuals} setActuals={setActuals} misIndirect={misIndirect} setMisIndirect={setMisIndirect} prospects={prospects} setProspects={setProspects} gpPerUnit={gpPerUnit} />)}
-          {tab === "plan" && gated("plan", <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} />)}
+          {tab === "plan" && gated("plan", <BizPlan svcs={svcs} calc={calc} goals5={goals5} setGoals5={setGoals5} goalActuals={goalActuals} setGoalActuals={setGoalActuals} roadmap={roadmap} setRoadmap={setRoadmap} competitors={competitors} setCompetitors={setCompetitors} ideas={ideas} setIdeas={setIdeas} scans={scans} setScans={setScans} companyName={companyName} vision={vision} swot={swot} pillars={pillars} focusAvoid={focusAvoid} bizModels={bizModels} ansoff={ansoff} partners={partners} trendRadarEnabled={trialStatus ? trialStatus.features?.trendRadar === true : undefined} />)}
           {tab === "billing" && <Billing companyName={companyName} />}
           {tab === "admin" && <AdminUsage />}
           </ErrorBoundary>
@@ -2592,6 +2592,9 @@ function AdminUsage() {
   const [tenants, setTenants] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [confirm, setConfirm] = useState(null);   // { id, name, enabled }: the change awaiting confirmation
+  const [saving, setSaving] = useState(false);
+  const [switchErr, setSwitchErr] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2611,6 +2614,32 @@ function AdminUsage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Trend Radar switch: nothing is sent until the confirm panel's button is clicked. The server (not this
+  // page) enforces who may change it, and it rejects the internal tenant. The row is updated from what the
+  // SERVER says it saved (json.feature.enabled), never from what this page asked for.
+  const applySwitch = async () => {
+    if (!confirm) return;
+    setSaving(true); setSwitchErr("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tenantId: confirm.id, feature: "trend_radar", enabled: confirm.enabled }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || json.error || "Couldn't change the switch");
+      const saved = json.feature?.enabled;
+      if (typeof saved !== "boolean") throw new Error("The server's reply was not understood; reload to see the current state");
+      setTenants((prev) => prev.map((t) => (t.id === confirm.id ? { ...t, trendRadar: { ...t.trendRadar, enabled: saved } } : t)));
+      setConfirm(null);
+    } catch (err) {
+      setSwitchErr(err.message || "Couldn't change the switch");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const COLS = [
     ["researchRuns", "Research runs"],
     ["campaignDrafts", "Campaign drafts"],
@@ -2623,8 +2652,23 @@ function AdminUsage() {
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Tenant usage (current month)</h3>
       <p style={{ color: "var(--muted)", fontSize: 13, marginTop: -8 }}>
-        AUK-internal only. Red cells mean a trialing tenant is over its trial cap.
+        AUK-internal only. Red cells mean a trialing tenant is over its trial cap. AI Trend Radar is off for every client until you switch it on here.
       </p>
+      {confirm && (
+        <div className="card" style={{ marginBottom: 14, borderColor: "var(--red)" }}>
+          <div className="disp" style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
+            Turn AI Trend Radar {confirm.enabled ? "ON" : "OFF"} for {confirm.name} (…{confirm.id.slice(-6)})?
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 10 }}>
+            {confirm.enabled ? "Each scan costs real AI spend." : "They keep their saved scans but can't run new ones."}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn" onClick={applySwitch} disabled={saving}>{saving ? "Saving…" : `Turn ${confirm.enabled ? "on" : "off"}`}</button>
+            <button className="btn ghost sm" onClick={() => setConfirm(null)} disabled={saving}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {switchErr && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{switchErr}</div>}
       {loading ? (
         <div>Loading…</div>
       ) : error ? (
@@ -2640,6 +2684,7 @@ function AdminUsage() {
                 {COLS.map(([key, label]) => (
                   <th key={key} style={{ textAlign: "right", padding: "6px 10px" }}>{label}</th>
                 ))}
+                <th style={{ textAlign: "center", padding: "6px 10px" }}>Trend Radar</th>
               </tr>
             </thead>
             <tbody>
@@ -2666,6 +2711,21 @@ function AdminUsage() {
                       </td>
                     );
                   })}
+                  <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                    {t.trendRadar?.always ? (
+                      <span style={{ color: "var(--muted)" }}>Always on</span>
+                    ) : (
+                      <>
+                        <span style={{ marginRight: 8, fontWeight: 600, color: t.trendRadar?.enabled ? "var(--green)" : "var(--muted)" }}>
+                          {t.trendRadar?.enabled ? "On" : "Off"}
+                        </span>
+                        <button className="btn ghost sm" disabled={saving}
+                          onClick={() => { setSwitchErr(""); setConfirm({ id: t.id, name: t.name, enabled: !t.trendRadar?.enabled }); }}>
+                          {t.trendRadar?.enabled ? "Turn off" : "Turn on"}
+                        </button>
+                      </>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2680,7 +2740,15 @@ function AdminUsage() {
 const RM_STATUS = ["Pending", "In progress", "Done"];
 const RM_CLR = { "Pending": "var(--slate)", "In progress": "var(--amber)", "Done": "var(--green)" };
 
-function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans, companyName, vision, swot, pillars, focusAvoid, bizModels, ansoff, partners }) {
+// Same sentence api/generate.js returns with the 403 (FEATURE_DISABLED_MESSAGES.trend_radar in
+// api/_lib/feature-flags.js; a contract test fails on ANY difference). Shown under the Scan button once the
+// status has LOADED and says the switch is off. Duplicated on purpose: the page must not need a failed request
+// to say it.
+const TREND_RADAR_OFF_MESSAGE = "AI Trend Radar isn't switched on for your account. Email sales@auk-maritime.com to enable it.";
+
+// trendRadarEnabled is tri-state: undefined while the trial status is still loading (or failed to load),
+// true / false once it has. Only `true` enables the button; only `false` shows the sentence.
+function BizPlan({ svcs, calc, goals5, setGoals5, goalActuals, setGoalActuals, roadmap, setRoadmap, competitors, setCompetitors, ideas, setIdeas, scans, setScans, companyName, vision, swot, pillars, focusAvoid, bizModels, ansoff, partners, trendRadarEnabled }) {
   const { getToken } = useAuth();
   const [view, setView] = useState("goals");
   const setRm = (id, status) => setRoadmap((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
@@ -3096,13 +3164,16 @@ Return exactly 5 trends, ranked most important first.`;
                 </select>
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
-                <button className="btn" onClick={scanTrends} disabled={trendBusy}>
+                <button className="btn" onClick={scanTrends} disabled={trendBusy || trendRadarEnabled !== true} aria-describedby={trendRadarEnabled === false ? "trend-radar-off" : undefined}>
                   {trendBusy ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Scanning the web…</> : <><Radar size={16} /> Scan trends</>}
                 </button>
                 {trendErr && <span style={{ color: "var(--red)", fontSize: 13 }}>{trendErr}</span>}
                 {trendRaw && <CopyRawReply text={trendRaw} />}
               </div>
             </div>
+            {trendRadarEnabled === false && (
+              <div id="trend-radar-off" className="hint" style={{ marginTop: 10 }}>{TREND_RADAR_OFF_MESSAGE}</div>
+            )}
           </div>
 
           {scans.length > 0 && (
