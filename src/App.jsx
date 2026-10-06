@@ -2872,7 +2872,7 @@ Return exactly 5 trends, ranked most important first.`;
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {[["goals","3-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"],["radar","AI Trend Radar"]].map(([v,l]) => (
+        {[["goals","3-Year Goals"],["swot","Where We Stand"],["pivot","Pivot 2035"],["models","Business Models"],["comp","Competition"],["partners","Partnerships"],["ideas","Ideas Bank"],["road","Roadmap"],["radar","AI Trend Radar"],["techtrend","Tech Trend"]].map(([v,l]) => (
           <button key={v} className={"navb" + (view === v ? " on" : "")} onClick={() => setView(v)} style={{ fontSize: 13, padding: "8px 12px" }}>{l}</button>
         ))}
       </div>
@@ -3225,6 +3225,211 @@ Return exactly 5 trends, ranked most important first.`;
           )}
         </>
       )}
+
+      {view === "techtrend" && <TechTrend />}
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- tech trend (shared reports) */
+// Reports AUK publishes for every customer (CLAUDE-CODE-BRIEF-tech-trend.md). Everyone reads; only the internal tenant
+// sees the form, Edit and Remove (the server decides who may write: /api/tech-trend answers 403 to anyone else). All
+// report text is rendered as plain React text, never as HTML.
+const TT_LIMITS = { title: 200, topic: 100, body: 20000, sources: 20, sourceName: 200, sourceUrl: 2000 };
+const ttToday = () => new Date().toISOString().slice(0, 10);
+const ttBlank = () => ({ title: "", topic: "", as_of: ttToday(), body: "", sources: [] });
+const ttSafeUrl = (u) => typeof u === "string" && /^https?:\/\//i.test(u);
+const ttNewestFirst = (a, b) => (a.as_of < b.as_of ? 1 : a.as_of > b.as_of ? -1 : new Date(b.published_at) - new Date(a.published_at));
+
+function TechTrend() {
+  const { getToken } = useAuth();
+  const [reports, setReports] = useState(null);   // null while loading
+  const [canManage, setCanManage] = useState(false);
+  const [loadErr, setLoadErr] = useState("");
+  const [form, setForm] = useState(null);   // null = closed; otherwise the report being written or edited
+  const [pending, setPending] = useState(null);   // the filled-in form awaiting the red confirm
+  const [busy, setBusy] = useState(false);
+  const [actionErr, setActionErr] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/tech-trend", { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't load the reports"));
+        if (!cancelled) { setReports(data.reports || []); setCanManage(!!data.canManage); }
+      } catch (e) {
+        if (!cancelled) { setLoadErr(e.message || "Couldn't load the reports"); setReports([]); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [getToken]);
+
+  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setSource = (i, k, v) => setForm((f) => ({ ...f, sources: f.sources.map((s, j) => (j === i ? { ...s, [k]: v } : s)) }));
+  const addSource = () => setForm((f) => (f.sources.length >= TT_LIMITS.sources ? f : { ...f, sources: [...f.sources, { name: "", url: "" }] }));
+  const removeSource = (i) => setForm((f) => ({ ...f, sources: f.sources.filter((_, j) => j !== i) }));
+  const openNew = () => { setActionErr(""); setPending(null); setForm(ttBlank()); };
+  const openEdit = (r) => {
+    setActionErr(""); setPending(null);
+    setForm({ id: r.id, title: r.title, topic: r.topic || "", as_of: r.as_of, body: r.body, sources: (r.sources || []).map((s) => ({ name: s.name, url: s.url || "" })) });
+  };
+  const closeForm = () => { setForm(null); setPending(null); setActionErr(""); };
+
+  // Step 1 of 2: only checks the form is complete and opens the red confirm panel. Nothing is sent.
+  const review = () => {
+    setActionErr("");
+    if (!form.title.trim()) return setActionErr("Add a title.");
+    if (!form.body.trim()) return setActionErr("Add the report text.");
+    if (!form.as_of) return setActionErr("Set the as-of date.");
+    if (form.sources.some((s) => !s.name.trim() && s.url.trim())) return setActionErr("Each source link needs a name.");
+    setPending(form);
+  };
+
+  // Step 2 of 2: only after the explicit "Publish to all customers" click. The server (not this page) validates,
+  // checks AUK, and sets published_by / updated_by from the session: none of that is sent from here.
+  const publish = async () => {
+    if (!pending) return;
+    setBusy(true); setActionErr("");
+    try {
+      const token = await getToken();
+      const isEdit = !!pending.id;
+      const res = await fetch(isEdit ? "/api/tech-trend?id=" + encodeURIComponent(pending.id) : "/api/tech-trend", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: pending.title, topic: pending.topic, as_of: pending.as_of, body: pending.body,
+          sources: pending.sources.filter((s) => s.name.trim()).map((s) => (s.url.trim() ? { name: s.name, url: s.url } : { name: s.name })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't publish the report"));
+      const saved = data.report;
+      setReports((prev) => [saved, ...(prev || []).filter((r) => r.id !== saved.id)].sort(ttNewestFirst));
+      setForm(null); setPending(null);
+    } catch (e) {
+      setActionErr(e.message || "Couldn't publish the report");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (r) => {
+    if (!window.confirm("Remove this report for ALL customers?")) return;
+    setActionErr("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/tech-trend?id=" + encodeURIComponent(r.id), { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiErrorMessage(data, "Couldn't remove the report"));
+      setReports((prev) => (prev || []).filter((x) => x.id !== r.id));
+      // If this report is open in the form (or waiting at the confirm panel), close both: it no longer exists.
+      if (form?.id === r.id) { setForm(null); setPending(null); }
+    } catch (e) {
+      setActionErr(e.message || "Couldn't remove the report");
+    }
+  };
+
+  return (
+    <>
+      <div className="note" style={{ marginBottom: 16 }}>
+        <b>Tech Trend:</b> reports on market and technology trends, published by AUK for every customer. They are general: they are not tailored to your own service lines the way an AI Trend Radar scan is.
+      </div>
+      {loadErr && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{loadErr}</div>}
+      {actionErr && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{actionErr}</div>}
+
+      {canManage && !form && (
+        <div style={{ marginBottom: 16 }}><button className="btn" onClick={openNew}><Plus size={16} /> New report</button></div>
+      )}
+
+      {canManage && form && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="disp" style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{form.id ? "Edit report" : "New report"}</div>
+          <div className="hint" style={{ marginBottom: 12 }}>Summarise in your own words, list your sources, set the as-of date, and publish nothing confidential.</div>
+          <div className="field"><label>Title</label><input className="inp" maxLength={TT_LIMITS.title} value={form.title} onChange={(e) => setField("title", e.target.value)} /></div>
+          <div className="grid g2">
+            <div className="field"><label>Topic</label><input className="inp" maxLength={TT_LIMITS.topic} value={form.topic} onChange={(e) => setField("topic", e.target.value)} /></div>
+            <div className="field"><label>As of</label><input className="inp" type="date" value={form.as_of} onChange={(e) => setField("as_of", e.target.value)} /></div>
+          </div>
+          <div className="field">
+            <label>Report text <span className="hint">({form.body.length.toLocaleString()} / {TT_LIMITS.body.toLocaleString()})</span></label>
+            <textarea className="inp" rows={12} maxLength={TT_LIMITS.body} value={form.body} onChange={(e) => setField("body", e.target.value)} />
+          </div>
+          <div className="eyebrow" style={{ margin: "12px 0 6px" }}>Sources (up to {TT_LIMITS.sources})</div>
+          {form.sources.map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <input className="inp" style={{ flex: "1 1 200px" }} placeholder="Name" maxLength={TT_LIMITS.sourceName} value={s.name} onChange={(e) => setSource(i, "name", e.target.value)} />
+              <input className="inp" style={{ flex: "2 1 260px" }} placeholder="Link (https://…), optional" maxLength={TT_LIMITS.sourceUrl} value={s.url} onChange={(e) => setSource(i, "url", e.target.value)} />
+              <button className="btn ghost sm" onClick={() => removeSource(i)}><X size={13} /></button>
+            </div>
+          ))}
+          <button className="btn ghost sm" onClick={addSource} disabled={form.sources.length >= TT_LIMITS.sources}><Plus size={13} /> Add source</button>
+          {!pending && (
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button className="btn" onClick={review}>Review and publish</button>
+              <button className="btn ghost sm" onClick={closeForm}>Cancel</button>
+            </div>
+          )}
+          {pending && (
+            <div className="card" style={{ marginTop: 14, borderColor: "var(--red)" }}>
+              <div className="disp" style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>Publish to ALL customers?</div>
+              <div style={{ fontSize: 14, marginBottom: 8 }}>
+                <b>{pending.title}</b>{pending.topic ? " · " + pending.topic : ""} · as of {pending.as_of} · {pending.sources.filter((s) => s.name.trim()).length} source(s)
+              </div>
+              <div style={{ fontSize: 14, marginBottom: 10 }}>
+                Every customer will be able to read this report in their own Business Plan. Do not publish anything confidential.
+                {pending.id && <> This <b>replaces</b> the version they can read now.</>}
+              </div>
+              <div className="hint" style={{ marginBottom: 6 }}>Text that will be published (start of the report):</div>
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--slate)", maxHeight: 160, overflowY: "auto", marginBottom: 12 }}>
+                {pending.body.slice(0, 600)}{pending.body.length > 600 ? "…" : ""}
+              </div>
+              {actionErr && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{actionErr}</div>}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn" onClick={publish} disabled={busy}>{busy ? "Publishing…" : "Publish to all customers"}</button>
+                <button className="btn ghost sm" onClick={() => setPending(null)} disabled={busy}>Back to editing</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {reports === null && !loadErr && <div className="hint">Loading…</div>}
+      {reports && reports.length === 0 && !loadErr && (
+        <div className="card"><div style={{ color: "var(--slate)" }}>No reports yet</div></div>
+      )}
+      {(reports || []).map((r) => (
+        <div className="card" key={r.id} style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+            <div>
+              <div className="disp" style={{ fontSize: 18, fontWeight: 700 }}>{r.title}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6, alignItems: "center" }}>
+                {r.topic && <span className="pill" style={{ background: "var(--navy-700)", color: "var(--brass)" }}>{r.topic}</span>}
+                <span className="hint">As of {r.as_of}{r.updated_at ? " · updated " + new Date(r.updated_at).toLocaleDateString() : ""}</span>
+              </div>
+            </div>
+            {canManage && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn ghost sm" onClick={() => openEdit(r)} disabled={!!form}>Edit</button>
+                <button className="btn ghost sm" onClick={() => remove(r)}><Trash2 size={13} /> Remove</button>
+              </div>
+            )}
+          </div>
+          <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.6 }}>{r.body}</div>
+          {(r.sources || []).length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Sources</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                {r.sources.map((s, i) => (
+                  <li key={i}>{ttSafeUrl(s.url) ? <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brass-hi)" }}>{s.name}</a> : s.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ))}
     </>
   );
 }
