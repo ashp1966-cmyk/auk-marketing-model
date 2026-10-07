@@ -2491,7 +2491,7 @@ function Billing({ companyName }) {
           <div>Loading…</div>
         ) : (
           <div>
-            Current status: <strong>{STATUS_LABEL[status?.billingStatus] || status?.billingStatus}</strong>
+            Current status: <strong>{isInternal ? "Internal" : STATUS_LABEL[status?.billingStatus] || status?.billingStatus}</strong>
             {status?.planCode ? <span> · plan {PLANS.find(p => p.planCode === status.planCode)?.name || status.planCode}</span> : null}
             {status?.paidUntil ? <span> · paid until {new Date(status.paidUntil).toLocaleDateString()}</span> : null}
           </div>
