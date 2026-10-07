@@ -206,8 +206,12 @@ async function main() {
   globalThis.__failDb = false;
   check('S4 db unavailable: trial-status 500 (its existing behaviour)', td.statusCode === 500);
 
-  // ---------- S5: nothing above wrote anything
-  check('S5 tenant_usage and tenant_features for the fixtures are byte-identical after the whole run', (await snap()) === before);
+  // ---------- S5: switches untouched; use counted exactly once per upstream call (Phase 1b), nothing else
+  const afterSnap = JSON.parse(await snap()); const beforeSnap = JSON.parse(before);
+  check('S5 tenant_features for the fixtures are byte-identical after the whole run', JSON.stringify(afterSnap.features) === JSON.stringify(beforeSnap.features));
+  const total = (s) => s.usage.reduce((n, r) => n + r.research_runs + r.campaign_drafts + r.outreach_drafts + r.trend_radar_scans, 0);
+  check(`S5 the fixtures' use grew by exactly one unit per upstream call (${DRY ? 'dry run: 0' : upstream.length}); blocked and failed requests counted nothing`,
+    total(afterSnap) - total(beforeSnap) === (DRY ? 0 : upstream.length), `added=${total(afterSnap) - total(beforeSnap)} upstream=${upstream.length}`);
 }
 
 main()

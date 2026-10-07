@@ -82,8 +82,10 @@ async function call(tenant, body) {
   await handler({ method: 'POST', headers: { 'x-test-tenant': tenant }, body }, res);
   return res;
 }
-const usageSnapshot = async () => JSON.stringify((await owner.query(
-  'select tenant_id, month::text, research_runs, campaign_drafts, outreach_drafts, trend_radar_scans, emails_sent from tenant_usage where tenant_id = any($1) order by tenant_id, month', [ids])).rows);
+// Phase 1b: generate.js counts each AI call exactly once, at the call. So the fixtures' total use must grow by exactly
+// the number of upstream calls (and by 0 in dry run), and by nothing else.
+const usageTotal = async () => (await owner.query(
+  'select coalesce(sum(research_runs + campaign_drafts + outreach_drafts + trend_radar_scans), 0)::int as n from tenant_usage where tenant_id = any($1)', [ids])).rows[0].n;
 
 function expectedUpstream(p) {
   const e = { model: 'claude-sonnet-4-6', max_tokens: p.max_tokens, messages: [{ role: 'user', content: PROMPT }] };
@@ -112,7 +114,7 @@ async function main() {
   await owner.query(`insert into tenants (id, name, billing_status, plan_code) values
     ($1, 'RLS Test gen internal', 'trialing', 'internal'), ($2, 'RLS Test gen trial', 'trialing', null), ($3, 'RLS Test gen capped', 'trialing', null)`, [INTERNAL, TRIAL, CAPPED]);
   await owner.query(`insert into tenant_usage (tenant_id, month, campaign_drafts) values ($1, date_trunc('month', now())::date, 2)`, [CAPPED]);
-  const usageBefore = await usageSnapshot();
+  const usageBefore = await usageTotal();
 
   // A. Each real payload, as the internal tenant.
   for (const { feature, payload } of real) {
@@ -182,8 +184,9 @@ async function main() {
     check(`E. feature ${label} -> 400 Missing or unrecognized feature, 0 upstream`, r.statusCode === 400 && r.body?.error === 'Missing or unrecognized feature' && upstream.length === before, `status=${r.statusCode}`);
   }
 
-  // D. Phase 1a counts nothing: tenant_usage for the fixtures is byte-identical after every request above.
-  check('D. tenant_usage unchanged by every request in this run (1a changes no counters)', (await usageSnapshot()) === usageBefore);
+  // D. Phase 1b: every upstream call was counted exactly once, and rejected requests counted nothing.
+  const added = (await usageTotal()) - usageBefore;
+  check(`D. the fixtures' use grew by exactly one unit per upstream call (${DRY ? 'dry run: 0' : upstream.length})`, added === (DRY ? 0 : upstream.length), `added=${added} upstream=${upstream.length}`);
 }
 
 main()

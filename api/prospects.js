@@ -84,10 +84,9 @@ export default async function handler(req, res) {
       // Manual uploads have zero AI cost, so they're exempt from the trial's research-run
       // cap entirely — that cap exists to protect AI spend, which doesn't apply here.
       if (!isManualUpload) {
-        // Defense-in-depth against a client that already generated the AI response before
-        // getting blocked, or that skips /api/generate's own gate entirely — the real spend
-        // prevention is /api/generate's checkTrialGate call, this one just stops the save.
-        const gate = await checkTrialGate(client, orgId, 'research_runs');
+        // The AI call was already counted by /api/generate (Phase 1b), so this run's own unit is already in the
+        // total: a cap check here would refuse the LAST allowed run. Status and expiry are still enforced.
+        const gate = await checkTrialGate(client, orgId, 'research_runs', { skipCap: true });
         if (gate.blocked) return gate;
       }
 
@@ -136,14 +135,7 @@ export default async function handler(req, res) {
          returning id, service_name, criteria, status, created_at`,
         [run.id]
       );
-      if (!isManualUpload) {
-        await client.query(
-          `insert into tenant_usage (tenant_id, month, research_runs)
-           values ($1, date_trunc('month', now())::date, 1)
-           on conflict (tenant_id, month) do update set research_runs = tenant_usage.research_runs + 1`,
-          [orgId]
-        );
-      }
+      // No usage increment here any more: the research run is counted by /api/generate when the AI is called.
 
       return { ...updatedRun, prospects: inserted };
     });

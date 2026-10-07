@@ -53,10 +53,9 @@ export default async function handler(req, res) {
       }
 
       const result = await withTenant(orgId, async (client) => {
-        // Defense-in-depth against a client that already generated the AI response before
-        // getting blocked, or that skips /api/generate's own gate entirely — the real spend
-        // prevention is /api/generate's checkTrialGate call, this one just stops the save.
-        const gate = await checkTrialGate(client, orgId, 'outreach_drafts');
+        // The AI call was already counted by /api/generate (Phase 1b), so this draft's own unit is already in the
+        // total: a cap check here would refuse the LAST allowed draft. Status and expiry are still enforced.
+        const gate = await checkTrialGate(client, orgId, 'outreach_drafts', { skipCap: true });
         if (gate.blocked) return gate;
 
         // Confirm the prospect actually belongs to this tenant before attaching a draft to it.
@@ -75,14 +74,7 @@ export default async function handler(req, res) {
            returning id, prospect_id, subject, body, approved_by, sent_at, follow_up_of, dry_run, created_at`,
           [prospectId, orgId, subject, body, followUpOf || null, DRAFT_DRY_RUN]
         );
-        if (!DRAFT_DRY_RUN) {
-          await client.query(
-            `insert into tenant_usage (tenant_id, month, outreach_drafts)
-             values ($1, date_trunc('month', now())::date, 1)
-             on conflict (tenant_id, month) do update set outreach_drafts = tenant_usage.outreach_drafts + 1`,
-            [orgId]
-          );
-        }
+        // No usage increment here any more: the draft is counted by /api/generate when the AI is called.
         return { status: 200, body: { draft: row } };
       });
 

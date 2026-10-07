@@ -63,7 +63,23 @@ export function classifyBillingStatus(tenant) {
 // to the caller's own tenant row regardless of the orgId passed in. Returns
 // { blocked: false } when the action may proceed, or { blocked: true, status, body }
 // (body shaped for a direct res.status(status).json(body) response) when it may not.
-export async function checkTrialGate(client, orgId, feature) {
+// The 402 body for a trialing tenant that has used its cap for `feature`. Shared by the gate's read check and by
+// api/generate.js's atomic reserve (which can lose a race at the cap and must say exactly the same thing).
+export function capReachedBody(feature) {
+  const cap = CAPS[feature];
+  return {
+    error: 'trial_cap_reached',
+    feature,
+    message: cap === 1
+      ? `You've used your ${cap} trial ${CAP_LABELS_SINGULAR[feature]} — subscribe to continue.`
+      : `You've used all ${cap} trial ${CAP_LABELS[feature]} — subscribe to continue.`,
+  };
+}
+
+// opts.skipCap: status and expiry only (used by the save endpoints, whose AI call was already counted by generate.js,
+// so a cap check there would refuse the LAST allowed run). A passing result carries `limit`: the cap for a trialing
+// tenant, null (no limit yet) for internal and paid ones; generate.js hands it to the atomic reserve.
+export async function checkTrialGate(client, orgId, feature, opts = {}) {
   if (!(feature in CAPS)) {
     throw new Error(`Unknown trial-gated feature: ${feature}`);
   }
@@ -79,7 +95,7 @@ export async function checkTrialGate(client, orgId, feature) {
   switch (classifyBillingStatus(tenant)) {
     case 'internal': // AUK's own tenant — exempt from all gating, always.
     case 'active':   // Once subscribed, trial caps no longer apply — real plan limits are separate, not-yet-built work.
-      return { blocked: false };
+      return { blocked: false, limit: null };
     case 'trialing':
       break; // trial expiry + caps below
     case 'cancelled':
@@ -105,6 +121,8 @@ export async function checkTrialGate(client, orgId, feature) {
     };
   }
 
+  if (opts.skipCap) return { blocked: false, limit: CAPS[feature] };
+
   const cap = CAPS[feature];
   const { rows: [usage] } = await client.query(
     // Safe to interpolate `feature` directly: validated above against the fixed CAPS
@@ -113,20 +131,10 @@ export async function checkTrialGate(client, orgId, feature) {
     [orgId]
   );
   if (usage.total >= cap) {
-    return {
-      blocked: true,
-      status: 402,
-      body: {
-        error: 'trial_cap_reached',
-        feature,
-        message: cap === 1
-          ? `You've used your ${cap} trial ${CAP_LABELS_SINGULAR[feature]} — subscribe to continue.`
-          : `You've used all ${cap} trial ${CAP_LABELS[feature]} — subscribe to continue.`,
-      },
-    };
+    return { blocked: true, status: 402, body: capReachedBody(feature) };
   }
 
-  return { blocked: false };
+  return { blocked: false, limit: cap };
 }
 
 export { CAPS, CAP_LABELS, TRIAL_DAYS };

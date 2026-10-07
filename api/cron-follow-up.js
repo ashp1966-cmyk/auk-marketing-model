@@ -17,6 +17,7 @@
 // app.current_tenant_id to here, by design. See scripts/rls-tenant-isolation.sql.
 import { neon } from '@neondatabase/serverless';
 import { callClaude } from './_lib/anthropic-client.js';
+import { classifyBillingStatus, CAPS, TRIAL_DAYS } from './_lib/trial-gate.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const FOLLOW_UP_DAYS = 5;
@@ -76,6 +77,21 @@ Respond with ONLY valid JSON, no markdown fences, no preamble, exactly this stru
   return parsed;
 }
 
+// Why a tenant gets NO follow-up drafted (and so no AI call), or null if it may. It mirrors what api/generate.js's
+// gate would say for the same tenant: a cancelled, inactive or expired-trial tenant, or a trialing one already at its
+// outreach cap, is skipped. Internal and paid tenants are not limited (plan limits arrive in Phase 2).
+async function skipReason(tenantId) {
+  const [t] = await sql`select billing_status, plan_code, created_at from tenants where id = ${tenantId}`;
+  if (!t) return 'no_tenant';
+  const kind = classifyBillingStatus(t);
+  if (kind === 'internal' || kind === 'active') return null;
+  if (kind === 'cancelled') return 'cancelled';
+  if (kind !== 'trialing') return 'inactive';
+  if (Date.now() > new Date(t.created_at).getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000) return 'trial_expired';
+  const [u] = await sql`select coalesce(sum(outreach_drafts), 0)::int as used from tenant_usage where tenant_id = ${tenantId}`;
+  return u.used >= CAPS.outreach_drafts ? 'at_outreach_cap' : null;
+}
+
 export default async function handler(req, res) {
   // Vercel automatically attaches this header on scheduled invocations when CRON_SECRET
   // is set — reject anything else so this publicly-reachable URL can't be triggered by
@@ -106,6 +122,8 @@ export default async function handler(req, res) {
 
     for (const row of eligible) {
       try {
+        const skip = await skipReason(row.tenant_id);
+        if (skip) { results.push({ emailId: row.email_id, ok: false, skipped: skip }); continue; }   // no Anthropic call
         if (!svcsCache.has(row.tenant_id)) {
           const [tdata] = await sql`select data from tenant_data where tenant_id = ${row.tenant_id}`;
           svcsCache.set(row.tenant_id, tdata?.data?.svcs || []);
@@ -144,7 +162,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       checked: eligible.length,
       drafted: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
+      skipped: results.filter((r) => r.skipped).length,
+      failed: results.filter((r) => !r.ok && !r.skipped).length,
       results,
     });
   } catch (err) {

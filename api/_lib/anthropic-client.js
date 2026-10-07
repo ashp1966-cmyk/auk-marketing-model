@@ -8,7 +8,7 @@
 // logic locally without a valid ANTHROPIC_API_KEY or spending real API credits — e.g.
 // exactly the situation that came up testing api/cron-follow-up.js while the real key
 // turned out to be invalid.
-const DRY_RUN = process.env.DRAFT_DRY_RUN === 'true';
+export const DRY_RUN = process.env.DRAFT_DRY_RUN === 'true';
 
 // A single JSON blob covering the field names every current caller parses out of a
 // response (outreach/follow-up drafts want subject+body, prospecting research wants
