@@ -2380,6 +2380,54 @@ Respond with ONLY valid JSON, no markdown, no code fences, using exactly these k
 
 
 /* ---------------------------------------------------------------- billing */
+// Billing page usage meters (Phase 2 b). Everything shown (numbers, labels, plan name, reset date) comes from
+// /api/billing/status's `usage`; nothing about plan limits is duplicated here. Plain wording, no alarm colours.
+function UsageMeters({ usage }) {
+  if (!usage) return null;
+  const mail = <a href="mailto:sales@auk-maritime.com" style={{ color: "var(--brass-hi)" }}>sales@auk-maritime.com</a>;
+  if (usage.kind === "unrecognized") {
+    return <div className="card" style={{ marginBottom: 16 }}>We can't show your usage because your plan isn't recognised. Email {mail}.</div>;
+  }
+  const paid = usage.kind === "active";
+  const rows = Object.entries(usage.features || {});
+  const notes = [];
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3 style={{ marginTop: 0 }}>{paid ? `Usage this month (${usage.planName} plan)` : "Your trial usage"}</h3>
+      {rows.map(([key, f]) => {
+        const full = f.enabled && f.used >= f.limit;
+        const near = f.enabled && !full && f.used * 5 >= f.limit * 4;
+        const colour = full || near ? "var(--brass)" : "var(--teal)";
+        const pct = Math.min(100, Math.round((Math.min(f.used, f.limit) / f.limit) * 100));
+        if (near) notes.push(<div key={key}>You've used most of your allowance for {f.label.toLowerCase()}.{paid ? ` It resets on ${usage.resetsText}.` : " Subscribe to continue after your trial."}</div>);
+        if (full) notes.push(paid
+          ? <div key={key}>You've reached your limit for {f.label.toLowerCase()}. It resets on {usage.resetsText}. To change plan, email {mail}.</div>
+          : <div key={key}>You've reached your trial limit for {f.label.toLowerCase()}. Subscribe to continue.</div>);
+        return (
+          <div key={key} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14 }}>
+              <span>{f.label}</span>
+              <span>{!f.enabled ? "Not switched on for your account" : paid
+                ? `${f.used} of ${f.limit} this month${full ? ", limit reached" : ""}`
+                : `${f.used} of ${f.limit} used in your trial${full ? ", trial limit reached" : ""}`}</span>
+            </div>
+            {f.enabled ? (
+              <div style={{ height: 6, borderRadius: 3, background: "var(--line)", marginTop: 4 }}>
+                <div role="progressbar" aria-label={f.label} aria-valuemin={0} aria-valuemax={f.limit} aria-valuenow={Math.min(f.used, f.limit)}
+                  style={{ height: 6, borderRadius: 3, width: `${pct}%`, background: colour }} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      {notes.length ? <div style={{ marginTop: 8, fontSize: 13, color: "var(--muted)" }}>{notes}</div> : null}
+      <div style={{ marginTop: 8, fontSize: 13, color: "var(--muted)" }}>
+        {paid ? `Resets on ${usage.resetsText}.` : usage.trialEndsAt ? `Your trial ends on ${new Date(usage.trialEndsAt).toLocaleDateString()}.` : null}
+      </div>
+    </div>
+  );
+}
+
 function Billing({ companyName }) {
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -2544,6 +2592,8 @@ function Billing({ companyName }) {
         ) : null}
         {error ? <div style={{ color: "var(--red)", marginTop: 8 }}>{error}</div> : null}
       </div>
+
+      {!loading && status?.usage ? <UsageMeters usage={status.usage} /> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         {PLANS.map((plan) => {

@@ -19,3 +19,8 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 export function resetDateText(now = new Date()) {
   return `1 ${MONTHS[(now.getUTCMonth() + 1) % 12]}`;
 }
+
+// '2026-11-01': the first day of the next calendar month, UTC, as an ISO date (the machine-readable twin of resetDateText).
+export function nextMonthStartISO(now = new Date()) {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+}

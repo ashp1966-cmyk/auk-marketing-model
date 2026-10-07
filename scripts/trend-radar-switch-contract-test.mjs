@@ -35,7 +35,7 @@ const count = (s, sub) => s.split(sub).length - 1;
   const server = FEATURE_DISABLED_MESSAGES.trend_radar;
   expect('Client sentence', "is STRICTLY EQUAL to the real FEATURE_DISABLED_MESSAGES.trend_radar from api/_lib/feature-flags.js (any difference fails)",
     typeof server === 'string' && client === server, `client=${JSON.stringify(client)} server=${JSON.stringify(server)}`);
-  expect('Client sentence', 'the sentence text appears nowhere else in src/App.jsx (no second, drifting copy)', count(src, 'switched on for your account') === 1);
+  expect('Client sentence', 'the sentence text appears nowhere else in src/App.jsx (no second, drifting copy)', count(src, "Trend Radar isn't switched on for your account") === 1);   // the full sentence; the Billing meter's short "Not switched on for your account" label is a different, deliberate string
   expect('Client sentence', 'it is rendered through the constant, once', count(src, '{TREND_RADAR_OFF_MESSAGE}') === 1);
 }
 
