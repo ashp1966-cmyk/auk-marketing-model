@@ -18,6 +18,7 @@
 import { neon } from '@neondatabase/serverless';
 import { callClaude } from './_lib/anthropic-client.js';
 import { classifyBillingStatus, CAPS, TRIAL_DAYS } from './_lib/trial-gate.js';
+import { planLimits } from './_lib/plan-limits.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const FOLLOW_UP_DAYS = 5;
@@ -84,7 +85,13 @@ async function skipReason(tenantId) {
   const [t] = await sql`select billing_status, plan_code, created_at from tenants where id = ${tenantId}`;
   if (!t) return 'no_tenant';
   const kind = classifyBillingStatus(t);
-  if (kind === 'internal' || kind === 'active') return null;
+  if (kind === 'internal') return null;
+  if (kind === 'active') {   // paid: skip at the plan's monthly outreach allowance; an unknown plan fails closed
+    const plan = planLimits(t.plan_code);
+    if (!plan) return 'plan_unrecognized';
+    const [m] = await sql`select coalesce(outreach_drafts, 0)::int as used from tenant_usage where tenant_id = ${tenantId} and month = date_trunc('month', now())::date`;
+    return (m?.used ?? 0) >= plan.outreach_drafts ? 'at_plan_limit' : null;
+  }
   if (kind === 'cancelled') return 'cancelled';
   if (kind !== 'trialing') return 'inactive';
   if (Date.now() > new Date(t.created_at).getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000) return 'trial_expired';

@@ -129,7 +129,7 @@ async function main() {
   // ---------- G: generate metering
   const FEATS = Object.keys(bodies);
   check('G0 payloads for all 4 features found', FEATS.length === 4);
-  const gi = await mk('gi', { plan: 'internal' }), ga = await mk('ga', { status: 'active' });
+  const gi = await mk('gi', { plan: 'internal' }), ga = await mk('ga', { status: 'active', plan: 'PLN_qlsyv2l059kp4ra' });   // a live plan code (Growth)
   for (const f of FEATS) {
     const before = upstream.length; const u0 = await used(gi);
     const r = await gen(gi, f); const u1 = await used(gi);

@@ -7,18 +7,23 @@ function column(feature) {
   return feature;
 }
 
+// 'total' = summed across ALL months (the trial); 'month' = the current calendar month only (paid plans, UTC).
+const WINDOWS = ['total', 'month'];
+
 // `client` must be inside withTenant(...) and already hold the tenant's advisory lock. ONE statement: counts one use
-// into the current month's row, but only while the tenant's total for this feature across ALL months is below
-// `limit` (null = no limit). Returns the month it counted into ('YYYY-MM-DD'), or null when at the limit.
-export async function reserveUnit(client, orgId, feature, limit) {
+// into the current month's row, but only while the tenant's use for this feature in `window` is below `limit`
+// (null = no limit). Returns the month it counted into ('YYYY-MM-DD'), or null when at the limit.
+export async function reserveUnit(client, orgId, feature, limit, window = 'total') {
   const c = column(feature);
+  if (typeof window !== 'string' || !WINDOWS.includes(window)) throw new Error('Unknown usage window');   // before any query
   const { rows: [row] } = await client.query(
     `insert into tenant_usage (tenant_id, month, ${c})
      select $1, date_trunc('month', now())::date, 1
-      where $2::int is null or (select coalesce(sum(${c}), 0) from tenant_usage where tenant_id = $1) < $2::int
+      where $2::int is null or (select coalesce(sum(${c}), 0) from tenant_usage
+              where tenant_id = $1 and ($3::text = 'total' or month = date_trunc('month', now())::date)) < $2::int
      on conflict (tenant_id, month) do update set ${c} = tenant_usage.${c} + 1
      returning month::text as month`,
-    [orgId, limit]
+    [orgId, limit, window]
   );
   return row ? row.month : null;
 }

@@ -63,7 +63,9 @@ async function main() {
   const T = {
     ok: await mk('ok'), capped: await mk('capped', { outreach: 2 }), expired: await mk('expired', { ageDays: 10 }),
     cancelled: await mk('cancelled', { status: 'cancelled' }), inactive: await mk('inactive', { status: 'weird' }),
-    active: await mk('active', { status: 'active' }), internal: await mk('internal', { plan: 'internal' }),
+    active: await mk('active', { status: 'active', plan: 'PLN_ek4cmy74mxanywt' }), internal: await mk('internal', { plan: 'internal' }),
+    planlimit: await mk('planlimit', { status: 'active', plan: 'PLN_nxjgctcp3gxlct6', outreach: 30 }),   // Startup, 30 of 30 this month
+    badplan: await mk('badplan', { status: 'active', plan: 'PLN_not_a_live_plan' }),
   };
   const r = await run();
   const by = Object.fromEntries(r.body.results.map((x) => [x.emailId, x]));
@@ -72,20 +74,22 @@ async function main() {
   check('C2 expired trial skipped: trial_expired', skipOf('expired') === 'trial_expired', String(skipOf('expired')));
   check('C3 cancelled skipped: cancelled', skipOf('cancelled') === 'cancelled', String(skipOf('cancelled')));
   check('C4 unrecognized status skipped: inactive', skipOf('inactive') === 'inactive', String(skipOf('inactive')));
+  check('C4b active tenant at its plan limit (Startup 30/30) skipped: at_plan_limit', skipOf('planlimit') === 'at_plan_limit', String(skipOf('planlimit')));
+  check('C4c active tenant on an unknown plan skipped: plan_unrecognized', skipOf('badplan') === 'plan_unrecognized', String(skipOf('badplan')));
   const drafted = ['ok', 'active', 'internal'];
   check('C5 trial-OK, active and internal tenants are drafted (3 of 3), no skip reason', drafted.every((k) => by[T[k].emailId]?.ok === true && !by[T[k].emailId].skipped));
   check(`C6 anthropic called exactly ${DRY ? 0 : 3} times (only for drafted tenants)`, anthropicCalls === (DRY ? 0 : 3), `calls=${anthropicCalls}`);
   let skippedClean = true;
-  for (const k of ['capped', 'expired', 'cancelled', 'inactive']) if ((await followUps(T[k].id)) !== 0) skippedClean = false;
-  skippedClean = skippedClean && (await used(T.capped.id)) === 2 && (await used(T.expired.id)) + (await used(T.cancelled.id)) + (await used(T.inactive.id)) === 0;
-  check('C7 skipped tenants got no follow-up row and no count (4 of 4)', skippedClean);
+  for (const k of ['capped', 'expired', 'cancelled', 'inactive', 'planlimit', 'badplan']) if ((await followUps(T[k].id)) !== 0) skippedClean = false;
+  skippedClean = skippedClean && (await used(T.capped.id)) === 2 && (await used(T.planlimit.id)) === 30 && (await used(T.badplan.id)) === 0 && (await used(T.expired.id)) + (await used(T.cancelled.id)) + (await used(T.inactive.id)) === 0;
+  check('C7 skipped tenants got no follow-up row and no count (6 of 6)', skippedClean);
   check('C8 drafted tenants each got exactly 1 follow-up row (3 of 3)', (await Promise.all(drafted.map((k) => followUps(T[k].id)))).every((n) => n === 1));
   check(`C9 drafted tenants counted +${DRY ? 0 : 1} each`, (await Promise.all(drafted.map((k) => used(T[k].id)))).every((n) => n === (DRY ? 0 : 1)));
-  check('C10 summary: checked 7, drafted 3, skipped 4, failed 0', r.body.checked === 7 && r.body.drafted === 3 && r.body.skipped === 4 && r.body.failed === 0,
+  check('C10 summary: checked 9, drafted 3, skipped 6, failed 0', r.body.checked === 9 && r.body.drafted === 3 && r.body.skipped === 6 && r.body.failed === 0,
     JSON.stringify({ c: r.body.checked, d: r.body.drafted, s: r.body.skipped, f: r.body.failed }));
 
   if (!DRY) {
-    const F = await mk('fail');   // the 7 above now have follow-ups, so only F is eligible
+    const F = await mk('fail');   // the 9 above now have follow-ups, so only F is eligible
     anthropicFail = true; const before = anthropicCalls;
     const fr = await run();
     anthropicFail = false;

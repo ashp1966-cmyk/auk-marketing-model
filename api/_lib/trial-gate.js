@@ -14,6 +14,8 @@
 // api/admin/usage.js and api/cron-usage-alert.js are fine for their own reporting
 // purpose, but would undercount here.)
 
+import { planLimits, resetDateText } from './plan-limits.js';
+
 const TRIAL_DAYS = 7;
 
 const CAPS = {
@@ -76,6 +78,23 @@ export function capReachedBody(feature) {
   };
 }
 
+// The 402 body for a paid tenant that has used its plan's monthly allowance for `feature`. Resets on the 1st (UTC).
+export function planLimitReachedBody(feature, plan, limit, now = new Date()) {
+  const when = resetDateText(now);
+  return {
+    error: 'plan_limit_reached',
+    feature,
+    message: limit === 1
+      ? `You've used your ${limit} ${CAP_LABELS_SINGULAR[feature]} included in your ${plan} plan this month. It resets on ${when}. To change plan, email sales@auk-maritime.com.`
+      : `You've used all ${limit} ${CAP_LABELS[feature]} included in your ${plan} plan this month. They reset on ${when}. To change plan, email sales@auk-maritime.com.`,
+  };
+}
+
+export const planUnrecognizedBody = () => ({
+  error: 'plan_unrecognized',
+  message: "Your plan isn't recognised. Please email sales@auk-maritime.com.",
+});
+
 // opts.skipCap: status and expiry only (used by the save endpoints, whose AI call was already counted by generate.js,
 // so a cap check there would refuse the LAST allowed run). A passing result carries `limit`: the cap for a trialing
 // tenant, null (no limit yet) for internal and paid ones; generate.js hands it to the atomic reserve.
@@ -94,8 +113,20 @@ export async function checkTrialGate(client, orgId, feature, opts = {}) {
 
   switch (classifyBillingStatus(tenant)) {
     case 'internal': // AUK's own tenant — exempt from all gating, always.
-    case 'active':   // Once subscribed, trial caps no longer apply — real plan limits are separate, not-yet-built work.
-      return { blocked: false, limit: null };
+      return { blocked: false, limit: null, window: 'total' };
+    case 'active': { // Paid: the plan's monthly allowance (calendar month, UTC). An unknown plan code fails closed.
+      const plan = planLimits(tenant.plan_code);
+      if (!plan) return { blocked: true, status: 402, body: planUnrecognizedBody() };
+      const limit = plan[feature];
+      const capBody = planLimitReachedBody(feature, plan.name, limit);
+      if (opts.skipCap) return { blocked: false, limit, window: 'month', capBody };
+      const { rows: [u] } = await client.query(
+        `select coalesce(${feature}, 0)::int as used from tenant_usage where tenant_id = $1 and month = date_trunc('month', now())::date`,
+        [orgId]
+      );
+      if ((u?.used ?? 0) >= limit) return { blocked: true, status: 402, body: capBody };
+      return { blocked: false, limit, window: 'month', capBody };
+    }
     case 'trialing':
       break; // trial expiry + caps below
     case 'cancelled':
@@ -121,7 +152,7 @@ export async function checkTrialGate(client, orgId, feature, opts = {}) {
     };
   }
 
-  if (opts.skipCap) return { blocked: false, limit: CAPS[feature] };
+  if (opts.skipCap) return { blocked: false, limit: CAPS[feature], window: 'total', capBody: capReachedBody(feature) };
 
   const cap = CAPS[feature];
   const { rows: [usage] } = await client.query(
@@ -134,7 +165,7 @@ export async function checkTrialGate(client, orgId, feature, opts = {}) {
     return { blocked: true, status: 402, body: capReachedBody(feature) };
   }
 
-  return { blocked: false, limit: cap };
+  return { blocked: false, limit: cap, window: 'total', capBody: capReachedBody(feature) };
 }
 
 export { CAPS, CAP_LABELS, TRIAL_DAYS };

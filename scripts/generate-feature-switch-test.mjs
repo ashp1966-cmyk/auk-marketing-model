@@ -131,8 +131,8 @@ async function main() {
   if (pre.length) { console.error('REFUSING: fixture ids already exist:', pre.map((r) => r.id).join(', ')); process.exitCode = 2; return; }
   created = true;  // BEFORE inserting: a partial failure is still cleaned up by exact id
   await owner.query(`insert into tenants (id, name, billing_status, plan_code, created_at) values
-    ($1,'sw internal','trialing','internal', now()), ($2,'sw active missing','active',null, now()), ($3,'sw active false','active',null, now()),
-    ($4,'sw active on','active',null, now()), ($5,'sw trial on fresh','trialing',null, now()), ($6,'sw trial on capped','trialing',null, now()),
+    ($1,'sw internal','trialing','internal', now()), ($2,'sw active missing','active','PLN_qlsyv2l059kp4ra', now()), ($3,'sw active false','active','PLN_qlsyv2l059kp4ra', now()),
+    ($4,'sw active on','active','PLN_qlsyv2l059kp4ra', now()), ($5,'sw trial on fresh','trialing',null, now()), ($6,'sw trial on capped','trialing',null, now()),
     ($7,'sw trial off expired','trialing',null, now() - interval '30 days')`,
     [INTERNAL, ACTIVE_MISSING, ACTIVE_FALSE, ACTIVE_ON, TRIAL_ON_FRESH, TRIAL_ON_CAPPED, TRIAL_OFF_EXPIRED]);
   await owner.query(`insert into tenant_features (tenant_id, feature, enabled, updated_by) values

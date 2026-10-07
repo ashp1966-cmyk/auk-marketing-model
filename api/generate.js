@@ -2,7 +2,7 @@
 import { callClaude, DRY_RUN } from './_lib/anthropic-client.js';
 import { resolveOrgId } from './_lib/auth.js';
 import { withTenant } from './_lib/db.js';
-import { checkTrialGate, capReachedBody, CAPS } from './_lib/trial-gate.js';
+import { checkTrialGate, CAPS } from './_lib/trial-gate.js';
 import { shapeGenerateRequest } from './_lib/generate-request.js';
 import { GENERATE_FEATURE_SWITCH, isFeatureEnabled, featureDisabledBody } from './_lib/feature-flags.js';
 import { reserveUnit, refundUnit } from './_lib/usage-meter.js';
@@ -65,8 +65,8 @@ export default async function handler(req, res) {
       await client.query('select pg_advisory_xact_lock(hashtext($1))', [auth.orgId]);
       const gate = await checkTrialGate(client, auth.orgId, feature);
       if (gate.blocked || DRY_RUN) return gate;   // dry-run calls are never counted
-      const month = await reserveUnit(client, auth.orgId, feature, gate.limit);
-      if (month === null) return { blocked: true, status: 402, body: capReachedBody(feature) };   // lost a race at the cap
+      const month = await reserveUnit(client, auth.orgId, feature, gate.limit, gate.window);
+      if (month === null) return { blocked: true, status: 402, body: gate.capBody };   // lost a race at the limit
       return { ...gate, reserved: { feature, month } };
     });
     if (outcome.blocked) {
